@@ -202,8 +202,8 @@ const PORT = process.env.PORT || 2567;
 app.use(express.static(path.join(__dirname, "dist")));
 
 // SPA fallback (for client-side routing)
-app.get("/*", (req, res) => {
-  res.sendFile(path.join(__dirname, "dist", "index.html"));
+app.get('/*path', (req, res) => {
+  res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
 // Start Colyseus + Express on same port
