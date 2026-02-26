@@ -86,28 +86,28 @@ export class MainScene extends Phaser.Scene {
   private isAnimating: boolean = false;
   private dilemma = { active: false, timer: 3000 };
   constructor() { super('MainScene'); }
-init() {
-    // Use the environment variable, or a fallback for local dev if needed
+  init() {
+    // Use the environment variable, or a fallback for local dev
     const serverUrl = import.meta.env.VITE_SERVER_URL;
-    
+   
     if (!serverUrl) {
         console.warn("VITE_SERVER_URL not set. Using default.");
-        // Only use default in production if you know it's correct, otherwise fail gracefully
-        this.client = new Colyseus.Client('wss://bugeaters-production.up.railway.app'); 
+        this.client = new Colyseus.Client('wss://bugeaters-production.up.railway.app');
     } else {
         this.client = new Colyseus.Client(serverUrl);
     }
 
-   // ... rest of init
-}
-
-   
-    if (!this.scene.get('UIScene')) this.scene.add('UIScene', UIScene, true);
+    // ←←← ADD THE UI SCENE HERE (this was the missing piece)
+    if (!this.scene.get('UIScene')) {
+        this.scene.add('UIScene', UIScene, true);
+    }
   }
+
   async create() {
     const { width } = this.scale;
     const zoom = width / 540;
     this.cameras.main.setZoom(zoom);
+    // ... rest of your existing create() code (unchanged)
     this.roadGraphics = this.add.graphics().setDepth(0);
     const loadingText = this.add.text(0, 0, "Connecting...", { fontSize: '40px', color: '#ffffff' }).setOrigin(0.5).setDepth(1000);
     this.cameras.main.centerOn(loadingText.x, loadingText.y);
