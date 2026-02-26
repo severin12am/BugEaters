@@ -9,7 +9,12 @@ import { Schema, type, MapSchema } from "@colyseus/schema";
 
 const app = express();
 // Force allow all CORS so the proxy doesn't block preflight requests
-app.use(cors({ origin: '*' }));
+app.use(cors({
+  origin: true,           // ← fixes wildcard + credentials issue
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 const httpServer = createServer(app);
@@ -203,7 +208,7 @@ app.use(express.static(path.join(__dirname, "dist")));
 
 // SPA fallback (for client-side routing)
 app.get('/*path', (req, res) => {
-  res.sendFile(path.join(__dirname, 'build', 'index.html'));
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));  // ← was 'build'
 });
 
 // Start Colyseus + Express on same port
