@@ -1,3 +1,5 @@
+import path from "path";
+import { fileURLToPath } from "url";
 import { Server, Room, Client } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { createServer } from "http";
@@ -190,7 +192,22 @@ export class GlobalRoom extends Room<GameState> {
 }
 
 gameServer.define("global_room", GlobalRoom);
-// BIND TO 0.0.0.0 to capture everything securely!
-gameServer.listen(2567, "0.0.0.0").then(() => {
-    console.log("Colyseus server running on port 2567");
+// ====================== RAILWAY PRODUCTION SETUP ======================
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const PORT = process.env.PORT || 2567;
+
+// Serve the built Phaser game (dist folder)
+app.use(express.static(path.join(__dirname, "dist")));
+
+// SPA fallback (for client-side routing)
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "dist", "index.html"));
+});
+
+// Start Colyseus + Express on same port
+httpServer.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Bugeaters multiplayer live on port ${PORT}`);
+  console.log(`🌐 Play here: https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'your-railway-url'}`);
 });

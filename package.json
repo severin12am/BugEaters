@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
   "dev": "vite",
-  "build": "npx vite build",
+  "build": "vite build",
   "preview": "vite preview",
-  "start": "tsx server.ts"
-},
+  "start": "tsx --tsconfig tsconfig.server.json server.ts"
+}
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "tsx": "^4.21.0",
