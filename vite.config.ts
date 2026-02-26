@@ -3,8 +3,10 @@ import { defineConfig } from 'vite';
 import path from 'path';
 
 export default defineConfig({
+  base: '/',                    // ← Added (fixes assets on Netlify)
+
   build: {
-    outDir: 'dist', // Ensure output matches server.ts expectation
+    outDir: 'dist',
     emptyOutDir: true,
   },
   resolve: {
@@ -15,7 +17,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/ws': {
-        target: 'wss://bugeaters-production.up.railway.app', // Replace with your actual Railway URL during dev if needed
+        target: 'wss://bugeaters-production.up.railway.app',
         ws: true,
       },
     },
