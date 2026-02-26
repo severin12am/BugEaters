@@ -4,11 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "start": "tsx server.ts"
-  },
+  "dev": "vite",
+  "build": "npx vite build",
+  "preview": "vite preview",
+  "start": "tsx server.ts"
+},
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "tsx": "^4.21.0",
