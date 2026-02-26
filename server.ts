@@ -198,6 +198,8 @@ export class GlobalRoom extends Room<GameState> {
 
 gameServer.define("global_room", GlobalRoom);
 // ====================== RAILWAY PRODUCTION SETUP ======================
+// ... inside server.ts ...
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -206,9 +208,10 @@ const PORT = process.env.PORT || 2567;
 // Serve the built Phaser game (dist folder)
 app.use(express.static(path.join(__dirname, "dist")));
 
-// SPA fallback (for client-side routing)
+// SPA fallback
 app.get('/*path', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));  // ← was 'build'
+  // Ensure this points to 'dist' not 'build'
+  res.sendFile(path.join(__dirname, 'dist', 'index.html')); 
 });
 
 // Start Colyseus + Express on same port

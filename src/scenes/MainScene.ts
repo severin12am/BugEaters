@@ -86,10 +86,21 @@ export class MainScene extends Phaser.Scene {
   private isAnimating: boolean = false;
   private dilemma = { active: false, timer: 3000 };
   constructor() { super('MainScene'); }
-  init() {
-    // FIXED: now points to your live Railway server
-    const serverUrl = import.meta.env.VITE_SERVER_URL || 'wss://bugeaters-production.up.railway.app';
-    this.client = new Colyseus.Client(serverUrl);
+init() {
+    // Use the environment variable, or a fallback for local dev if needed
+    const serverUrl = import.meta.env.VITE_SERVER_URL;
+    
+    if (!serverUrl) {
+        console.warn("VITE_SERVER_URL not set. Using default.");
+        // Only use default in production if you know it's correct, otherwise fail gracefully
+        this.client = new Colyseus.Client('wss://bugeaters-production.up.railway.app'); 
+    } else {
+        this.client = new Colyseus.Client(serverUrl);
+    }
+
+   // ... rest of init
+}
+
    
     if (!this.scene.get('UIScene')) this.scene.add('UIScene', UIScene, true);
   }
