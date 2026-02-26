@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npx tsc && vite build",
-    "preview": "vite preview"
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "tsx server.ts"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
@@ -21,7 +22,6 @@
     "colyseus.js": "^0.16.22",
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "phaser": "^3.70.0",
-    "ts-node": "^10.9.2"
+    "phaser": "^3.70.0"
   }
 }
