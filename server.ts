@@ -195,27 +195,25 @@ export class GlobalRoom extends Room<GameState> {
     });
   }
 }
-
 gameServer.define("global_room", GlobalRoom);
-gameServer.attach({ server: httpServer });   // ← ADD THIS
-// ====================== RAILWAY PRODUCTION SETUP ======================
-// ... inside server.ts ...
 
+// ← THIS LINE MUST BE HERE (registers /matchmake)
+gameServer.attach({ server: httpServer });
+
+// Railway production setup
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = process.env.PORT || 2567;
-
-// Serve the built Phaser game (dist folder)
 app.use(express.static(path.join(__dirname, "dist")));
 
-// SPA fallback
+// SPA fallback - must be LAST
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-// Start Colyseus + Express on same port
+const PORT = process.env.PORT || 2567;
+
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Bugeaters multiplayer live on port ${PORT}`);
-  console.log(`🌐 Play here: https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'your-railway-url'}`);
+  console.log(`🌐 Play here: https://${process.env.RAILWAY_PUBLIC_DOMAIN}`);
 });
