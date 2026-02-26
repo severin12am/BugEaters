@@ -200,19 +200,20 @@ gameServer.define("global_room", GlobalRoom);
 // ====================== RAILWAY PRODUCTION SETUP ======================
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
 const PORT = process.env.PORT || 2567;
 
-// Serve the built Phaser game (dist folder)
+// ←←← THIS WAS MISSING (registers /matchmake routes)
+await gameServer.attach({ app });
+
+// Serve Vite build
 app.use(express.static(path.join(__dirname, "dist")));
 
-// SPA fallback (for client-side routing)
-app.get('/*path', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));  // ← was 'build'
+// SPA fallback (LAST, and fixed path)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-// Start Colyseus + Express on same port
 httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Bugeaters multiplayer live on port ${PORT}`);
-  console.log(`🌐 Play here: https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'your-railway-url'}`);
+  console.log(`🚀 Bugeaters live on port ${PORT}`);
+  console.log(`🌐 https://${process.env.RAILWAY_PUBLIC_DOMAIN}`);
 });
