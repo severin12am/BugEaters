@@ -197,6 +197,7 @@ export class GlobalRoom extends Room<GameState> {
 }
 
 gameServer.define("global_room", GlobalRoom);
+gameServer.attach({ server: httpServer });   // ← ADD THIS
 // ====================== RAILWAY PRODUCTION SETUP ======================
 // ... inside server.ts ...
 
@@ -209,9 +210,8 @@ const PORT = process.env.PORT || 2567;
 app.use(express.static(path.join(__dirname, "dist")));
 
 // SPA fallback
-app.get('/*path', (req, res) => {
-  // Ensure this points to 'dist' not 'build'
-  res.sendFile(path.join(__dirname, 'dist', 'index.html')); 
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 // Start Colyseus + Express on same port
