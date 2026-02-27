@@ -8,16 +8,17 @@
     "build": "vite build",
     "start": "tsx server.ts"
   },
-  "dependencies": {
-    "@colyseus/sdk": "^0.17.26",
-    "@colyseus/core": "^0.17.36",
-    "@colyseus/ws-transport": "^0.17.9",
-    "@colyseus/schema": "^4.0.15",
-    "cors": "^2.8.6",
-    "express": "^5.2.1",
-    "phaser": "^3.70.0",
-    "tsx": "^4.21.0"
-  },
+"dependencies": {
+  "@colyseus/core": "^0.17.38",
+  "@colyseus/sdk": "^0.17.34",
+  "@colyseus/ws-transport": "^0.17.9",
+  "@colyseus/schema": "^4.0.15",
+  "cors": "^2.8.6",
+  "express": "^5.2.1",
+  "phaser": "^3.70.0",
+  "tsx": "^4.21.0",
+  "zod": "^4.3.6"
+},
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "typescript": "^5.2.2",
