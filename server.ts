@@ -209,7 +209,7 @@ app.use(express.static(path.join(__dirname, "dist")));
 
 // SPA fallback - must be LAST
 // Use a wildcard path that modern Express accepts:
-app.get('/*', (req, res) => {
+app.get(/(.*)/, (req, res) => {
    res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
