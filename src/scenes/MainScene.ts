@@ -86,18 +86,18 @@ export class MainScene extends Phaser.Scene {
   private isAnimating: boolean = false;
   private dilemma = { active: false, timer: 3000 };
   constructor() { super('MainScene'); }
-  init() {
-    // Use the environment variable, or a fallback for local dev
-    const serverUrl = import.meta.env.VITE_SERVER_URL;
-   
+    init() {
+    // Prefer environment variable, fallback to production URL (https NOT wss)
+    let serverUrl = import.meta.env.VITE_SERVER_URL;
+
     if (!serverUrl) {
-        console.warn("VITE_SERVER_URL not set. Using default.");
-        this.client = new Colyseus.Client('wss://bugeaters-production.up.railway.app');
-    } else {
-        this.client = new Colyseus.Client(serverUrl);
+        console.warn("VITE_SERVER_URL not set. Using default HTTPS URL.");
+        serverUrl = 'https://bugeaters-production.up.railway.app';
     }
 
-    // ←←← ADD THE UI SCENE HERE (this was the missing piece)
+    this.client = new Colyseus.Client(serverUrl);
+
+    // ←←← ADD THE UI SCENE HERE (keep this)
     if (!this.scene.get('UIScene')) {
         this.scene.add('UIScene', UIScene, true);
     }
