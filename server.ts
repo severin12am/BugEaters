@@ -209,28 +209,21 @@ app.use(express.static(path.join(__dirname, "dist")));
 
 // Add this right BEFORE app.get(/(.*)/)
 // --- MATCHMAKING ROUTE ---
+// --- MATCHMAKING ROUTE (fixed - returns full reservation) ---
 app.post("/matchmake/:method/:roomName", async (req, res) => {
   try {
     const { method, roomName } = req.params;
     const options = req.body || {};
+
     let reservation;
-    
     if (method === "joinOrCreate") {
       reservation = await matchMaker.joinOrCreate(roomName, options);
-    }
-    
-    // Format response safely to PREVENT the "undefined (reading 'name')" error
-    const responseData = {
-      sessionId: reservation.sessionId,
-      room: reservation.room || {}
-    };
-    
-    // Guarantee the name exists
-    if (!responseData.room.name) {
-      responseData.room.name = roomName;
+    } else {
+      return res.status(400).json({ error: "Unsupported method" });
     }
 
-    res.json(responseData);
+    // Return the FULL original reservation object (this fixes the .name error)
+    res.json(reservation);
   } catch (e: any) {
     console.error("Matchmake error:", e);
     res.status(500).json({ error: e.message });
