@@ -204,14 +204,16 @@ gameServer.attach({ server: httpServer });
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Serve the static frontend files
 app.use(express.static(path.join(__dirname, "dist")));
 
 // SPA fallback - must be LAST
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+// Use a wildcard path that modern Express accepts:
+app.get('/*', (req, res) => {
+   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
-const PORT = process.env.PORT || 2567;
+const PORT = Number(process.env.PORT || 2567);
 
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Bugeaters multiplayer live on port ${PORT}`);
