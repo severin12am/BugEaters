@@ -1,4 +1,3 @@
-import { Server, Room, Client, matchMaker } from "@colyseus/core";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Server, Room, Client, matchMaker } from "@colyseus/core";
