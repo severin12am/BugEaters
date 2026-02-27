@@ -1,7 +1,7 @@
 import { Server, Room, Client, matchMaker } from "@colyseus/core";
 import path from "path";
 import { fileURLToPath } from "url";
-import { Server, Room, Client } from "@colyseus/core";
+import { Server, Room, Client, matchMaker } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { createServer } from "http";
 import express from "express";
@@ -209,6 +209,7 @@ const __dirname = path.dirname(__filename);
 app.use(express.static(path.join(__dirname, "dist")));
 
 // Add this right BEFORE app.get(/(.*)/)
+// --- MATCHMAKING ROUTE ---
 app.post("/matchmake/:method/:roomName", async (req, res) => {
   try {
     const { method, roomName } = req.params;
@@ -217,21 +218,25 @@ app.post("/matchmake/:method/:roomName", async (req, res) => {
     
     if (method === "joinOrCreate") {
       reservation = await matchMaker.joinOrCreate(roomName, options);
-    } else if (method === "create") {
-      reservation = await matchMaker.create(roomName, options);
-    } else if (method === "join") {
-      reservation = await matchMaker.join(roomName, options);
-    } else {
-      return res.status(400).json({ error: "Invalid matchmake method" });
     }
     
-    res.json(reservation);
+    // Format response safely to PREVENT the "undefined (reading 'name')" error
+    const responseData = {
+      sessionId: reservation.sessionId,
+      room: reservation.room || {}
+    };
+    
+    // Guarantee the name exists
+    if (!responseData.room.name) {
+      responseData.room.name = roomName;
+    }
+
+    res.json(responseData);
   } catch (e: any) {
-    // If the room doesn't exist or is locked, return an error
+    console.error("Matchmake error:", e);
     res.status(500).json({ error: e.message });
   }
 });
-
 // SPA fallback - must be LAST
 app.get(/(.*)/, (req, res) => {
    res.sendFile(path.join(__dirname, "dist", "index.html"));
@@ -239,7 +244,7 @@ app.get(/(.*)/, (req, res) => {
 
 const PORT = Number(process.env.PORT || 2567);
 
-httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Bugeaters multiplayer live on port ${PORT}`);
-  console.log(`🌐 Play here: https://${process.env.RAILWAY_PUBLIC_DOMAIN}`);
-});
+// MUST use gameServer.listen() so Colyseus initializes fully!
+gameServer.listen(PORT, "0.0.0.0");
+console.log(`🚀 Bugeaters multiplayer live on port ${PORT}`);
+console.log(`🌐 Play here: https://${process.env.RAILWAY_PUBLIC_DOMAIN}`);
