@@ -1,4 +1,5 @@
 {
   "buildCommand": "npm run build",
-  "startCommand": "tsx server.ts"
+  "startCommand": "tsx server.ts",
+  "rootDirectory": "/"
 }
