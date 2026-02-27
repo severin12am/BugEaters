@@ -10,7 +10,6 @@
 
   "devDependencies": {
     "@types/cors": "^2.8.19",
-    "tsx": "^4.21.0",
     "typescript": "^5.2.2",
     "vite": "^5.0.8"
   },
@@ -21,6 +20,7 @@
     "colyseus.js": "^0.16.22",
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "phaser": "^3.70.0"
+    "phaser": "^3.70.0",
+    "tsx": "^4.21.0"
   }
 }
