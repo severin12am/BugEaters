@@ -1,3 +1,4 @@
+import { Server, Room, Client, matchMaker } from "@colyseus/core";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Server, Room, Client } from "@colyseus/core";
@@ -207,8 +208,31 @@ const __dirname = path.dirname(__filename);
 // Serve the static frontend files
 app.use(express.static(path.join(__dirname, "dist")));
 
+// Add this right BEFORE app.get(/(.*)/)
+app.post("/matchmake/:method/:roomName", async (req, res) => {
+  try {
+    const { method, roomName } = req.params;
+    const options = req.body || {};
+    let reservation;
+    
+    if (method === "joinOrCreate") {
+      reservation = await matchMaker.joinOrCreate(roomName, options);
+    } else if (method === "create") {
+      reservation = await matchMaker.create(roomName, options);
+    } else if (method === "join") {
+      reservation = await matchMaker.join(roomName, options);
+    } else {
+      return res.status(400).json({ error: "Invalid matchmake method" });
+    }
+    
+    res.json(reservation);
+  } catch (e: any) {
+    // If the room doesn't exist or is locked, return an error
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // SPA fallback - must be LAST
-// Use a wildcard path that modern Express accepts:
 app.get(/(.*)/, (req, res) => {
    res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
