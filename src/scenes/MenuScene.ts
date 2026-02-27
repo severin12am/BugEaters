@@ -10,7 +10,7 @@ export class MenuScene extends Phaser.Scene {
     // BRIGHT RED BACKGROUND - impossible to miss
     this.cameras.main.setBackgroundColor('#ff0000');
 
-    this.add.text(w / 2, h / 2 - 80, '🐛 BUG EATERS', {
+    this.add.text(w / 2, h / 2 - 80, '🐛 BUG EATERS - FIXED v3', {
       fontSize: '70px', color: '#ffffff', fontStyle: 'bold'
     }).setOrigin(0.5);
 
