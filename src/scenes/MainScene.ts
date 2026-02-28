@@ -210,7 +210,7 @@ export class MainScene extends Phaser.Scene {
     playersMap.onChange((serverPlayer: Player, sessionId: string) => {
       const entity = this.playerEntities.get(sessionId);
       if (!entity) return;
-      console.log("🔄 Player CHANGED → sessionId:", sessionId, "microPos:", serverPlayer.microPos, "y:", serverPlayer.y);
+      console.log("🔄  Player CHANGED → sessionId:", sessionId, "microPos:", serverPlayer.microPos, "y:", serverPlayer.y);
 
       const newX = this.getMicroPosX(serverPlayer.microPos);
       if (Math.abs(entity.container.x - newX) > 5) {
