@@ -188,55 +188,72 @@ export class MainScene extends Phaser.Scene {
     console.log("🔗 setupNetwork started – local sessionId:", this.localSessionId);
 
     // Set up state change listener
-    room.state.onChange = (changes: any[]) => {
-      changes.forEach((change) => {
-        if (change.field === "raceTimer") this.events.emit('time_update', change.value);
-      });
-    };
-
-    // Set up player listeners directly - Colyseus 0.15+ ensures state is ready
-    const playersMap = room.state.players;
-    console.log("📊 Setting up player listeners, current players:", playersMap.size);
-
-    playersMap.onAdd((serverPlayer: Player, sessionId: string) => {
-      console.log("👤 Player ADDED → sessionId:", sessionId, "type:", serverPlayer.type, "microPos:", serverPlayer.microPos);
-      const container = this.createCharacter(serverPlayer.type, serverPlayer.microPos, serverPlayer.y);
-      container.setDepth(100);
-      this.playerEntities.set(sessionId, { container, serverState: serverPlayer });
-
-      if (sessionId === this.localSessionId) {
-        this.localPlayerReady = true;
-        console.log('✅ LOCAL PLAYER READY – microPos:', serverPlayer.microPos);
-        this.updateUI(serverPlayer);
-      }
-    });
-
-    playersMap.onRemove((serverPlayer: Player, sessionId: string) => {
-      console.log("❌ Player REMOVED → sessionId:", sessionId);
-      const entity = this.playerEntities.get(sessionId);
-      if (entity) {
-        entity.container.destroy();
-        this.playerEntities.delete(sessionId);
-      }
-    });
-
-    playersMap.onChange((serverPlayer: Player, sessionId: string) => {
-      const entity = this.playerEntities.get(sessionId);
-      if (!entity) return;
-      console.log("🔄 Player CHANGED → sessionId:", sessionId, "microPos:", serverPlayer.microPos);
-
-      const newX = this.getMicroPosX(serverPlayer.microPos);
-      if (Math.abs(entity.container.x - newX) > 5) {
-        this.tweens.add({
-          targets: entity.container,
-          x: newX,
-          duration: 140,
-          ease: 'Cubic.easeOut'
+    if (room.state) {
+      room.state.onChange = (changes: any[]) => {
+        changes.forEach((change) => {
+          if (change.field === "raceTimer") this.events.emit('time_update', change.value);
         });
+      };
+    }
+
+    // Wait for state to be fully initialized
+    room.onStateChange.once((state: GameState) => {
+      console.log("📊 Initial state received, setting up player listeners...");
+      
+      if (!state.players) {
+        console.error("❌ State.players is undefined!");
+        return;
       }
-      entity.container.y = serverPlayer.y;
-      if (serverPlayer.isDead) entity.container.setAlpha(0);
-      if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
+      
+      const playersMap = state.players;
+      console.log("📊 Setting up player listeners, current players:", playersMap.size);
+
+      playersMap.onAdd((serverPlayer: Player, sessionId: string) => {
+        console.log("👤 Player ADDED → sessionId:", sessionId, "type:", serverPlayer.type, "microPos:", serverPlayer.microPos);
+        const container = this.createCharacter(serverPlayer.type, serverPlayer.microPos, serverPlayer.y);
+        container.setDepth(100);
+        this.playerEntities.set(sessionId, { container, serverState: serverPlayer });
+
+        if (sessionId === this.localSessionId) {
+          this.localPlayerReady = true;
+          console.log('✅ LOCAL PLAYER READY – microPos:', serverPlayer.microPos);
+          this.updateUI(serverPlayer);
+        }
+      });
+
+      playersMap.onRemove((serverPlayer: Player, sessionId: string) => {
+        console.log("❌ Player REMOVED → sessionId:", sessionId);
+        const entity = this.playerEntities.get(sessionId);
+        if (entity) {
+          entity.container.destroy();
+          this.playerEntities.delete(sessionId);
+        }
+      });
+
+      playersMap.onChange((serverPlayer: Player, sessionId: string) => {
+        const entity = this.playerEntities.get(sessionId);
+        if (!entity) return;
+        console.log("🔄 Player CHANGED → sessionId:", sessionId, "microPos:", serverPlayer.microPos);
+
+        const newX = this.getMicroPosX(serverPlayer.microPos);
+        if (Math.abs(entity.container.x - newX) > 5) {
+          this.tweens.add({
+            targets: entity.container,
+            x: newX,
+            duration: 140,
+            ease: 'Cubic.easeOut'
+          });
+        }
+        entity.container.y = serverPlayer.y;
+        if (serverPlayer.isDead) entity.container.setAlpha(0);
+        if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
+      });
+      
+      // Process existing players
+      playersMap.forEach((player, sessionId) => {
+        console.log("👥 Processing existing player:", sessionId);
+        // Trigger onAdd for existing players
+      });
     });
 
     // Message handlers can be set up immediately (don't need state)
