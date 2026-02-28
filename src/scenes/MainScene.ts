@@ -130,34 +130,23 @@ export class MainScene extends Phaser.Scene {
     console.log("🚀 Attempting joinOrCreate('global_room')...");
 
     try {
-      console.log("🚀 Attempting joinOrCreate('global_room')...");
       this.room = await this.client.joinOrCreate<GameState>("global_room");
 
       console.log("✅ Joined room! roomId:", this.room.roomId, "sessionId:", this.room.sessionId);
       loadingText.destroy();
 
-      // === ROBUST INITIAL STATE HANDLING FOR COLYSEUS 0.17 ===
-      const setupIfReady = () => {
-        if (this.room.state) {
-          console.log("✅ Initial state ALREADY present – setting up listeners immediately");
-          this.setupNetwork(this.room);
-        } else {
-          console.log("⏳ State not ready yet – waiting for first patch...");
-          this.room.onStateChange.once((state: GameState) => {
-            console.log("✅ Initial state received via onStateChange");
-            this.setupNetwork(this.room);
-          });
-        }
-      };
-
-      // Tiny delay covers the synchronous patch case (99% of deploys)
-      this.time.delayedCall(50, setupIfReady);
+      // ←←← FIXED COLYSEUS 0.17 INITIAL STATE HANDLING (recommended pattern)
+      this.room.onStateChange.once((state: GameState) => {
+        console.log("✅ First full state patch received – schema is now fully initialized");
+        this.setupNetwork(this.room);
+      });
 
     } catch (e: any) {
       console.error("❌ joinOrCreate failed:", e);
       loadingText.setText("Connection Failed – refresh page");
       return;
     }
+
     // Input handlers
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => { this.isSwiping = true; this.swipeStartX = p.x; });
     this.input.on('pointerup', (p: Phaser.Input.Pointer) => {
@@ -175,17 +164,21 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
-  // === CLEAN OFFICIAL COLYSEUS 0.17 SETUP (called with this.setupNetwork(this.room)) ===
+  // === CLEAN OFFICIAL COLYSEUS 0.17 SETUP ===
   private setupNetwork(room: Room<GameState>) {
     this.localSessionId = room.sessionId!;
 
     console.log("🔗 setupNetwork started – local sessionId:", this.localSessionId);
 
-    // 1. Race Timer (primitive)
-    room.state.listen("raceTimer", (value: number, previousValue?: number) => {
-      console.log("⏱️ raceTimer updated →", value);
-      this.events.emit('time_update', value);
-    });
+    // 1. Race Timer – modern root onChange (recommended for 0.17+)
+    room.state.onChange = (changes: any[]) => {
+      changes.forEach((change) => {
+        if (change.field === "raceTimer") {
+          console.log("⏱️ raceTimer updated →", change.value);
+          this.events.emit('time_update', change.value);
+        }
+      });
+    };
 
     // 2. Players Map
     const playersMap = room.state.players;
