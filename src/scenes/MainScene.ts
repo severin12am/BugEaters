@@ -131,25 +131,33 @@ export class MainScene extends Phaser.Scene {
 
     try {
       console.log("🚀 Attempting joinOrCreate('global_room')...");
-      this.room = await this.client.joinOrCreate<GameState>("global_room");   // ← typed + important
+      this.room = await this.client.joinOrCreate<GameState>("global_room");
 
       console.log("✅ Joined room! roomId:", this.room.roomId, "sessionId:", this.room.sessionId);
       loadingText.destroy();
 
-      // CRITICAL FIX for Colyseus 0.17: wait for the FIRST state patch
-      console.log("⏳ Waiting for initial state synchronization from server...");
-      
-      this.room.onStateChange.once((state: GameState) => {
-        console.log("✅ Initial state received from server! Setting up listeners now");
-        this.setupNetwork(this.room);
-      });
+      // === ROBUST INITIAL STATE HANDLING FOR COLYSEUS 0.17 ===
+      const setupIfReady = () => {
+        if (this.room.state) {
+          console.log("✅ Initial state ALREADY present – setting up listeners immediately");
+          this.setupNetwork(this.room);
+        } else {
+          console.log("⏳ State not ready yet – waiting for first patch...");
+          this.room.onStateChange.once((state: GameState) => {
+            console.log("✅ Initial state received via onStateChange");
+            this.setupNetwork(this.room);
+          });
+        }
+      };
 
-    } catch (e) {
+      // Tiny delay covers the synchronous patch case (99% of deploys)
+      this.time.delayedCall(50, setupIfReady);
+
+    } catch (e: any) {
       console.error("❌ joinOrCreate failed:", e);
       loadingText.setText("Connection Failed – refresh page");
       return;
     }
-
     // Input handlers
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => { this.isSwiping = true; this.swipeStartX = p.x; });
     this.input.on('pointerup', (p: Phaser.Input.Pointer) => {
