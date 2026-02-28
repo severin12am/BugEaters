@@ -99,7 +99,7 @@ export class MainScene extends Phaser.Scene {
     }
     console.log("🔗 Colyseus connecting to:", serverUrl);
     this.client = new Client(serverUrl);
-    console.log("✅ Colyseus client created with SDK 0.17");
+    console.log("✅ Colyseus client created with SDK 0.15+");
     if (!this.scene.get('UIScene')) {
       this.scene.add('UIScene', UIScene, true);
     }
@@ -127,8 +127,17 @@ export class MainScene extends Phaser.Scene {
 
       loadingText.destroy();
 
-      // ←←← FIXED: Setup network listeners immediately (before initial state arrives)
+      // Setup network listeners
       this.setupNetwork(this.room);
+      
+      // Process any existing players if state is already synchronized
+      if (this.room.state && this.room.state.players) {
+        console.log("📊 Processing existing players...");
+        this.room.state.players.forEach((player, sessionId) => {
+          console.log("👤 Found existing player:", sessionId);
+          // The onAdd handler will be called for these
+        });
+      }
 
     } catch (e: any) {
       console.error("❌ joinOrCreate failed:", e);
@@ -160,54 +169,72 @@ export class MainScene extends Phaser.Scene {
     this.localSessionId = room.sessionId!;
     console.log("🔗 setupNetwork started – local sessionId:", this.localSessionId);
 
-    room.state.onChange = (changes: any[]) => {
-      changes.forEach((change) => {
-        if (change.field === "raceTimer") this.events.emit('time_update', change.value);
-      });
-    };
-
-    const playersMap = room.state.players;
-    playersMap.onAdd((serverPlayer: Player, sessionId: string) => {
-      console.log("👤 Player ADDED → sessionId:", sessionId, "type:", serverPlayer.type, "microPos:", serverPlayer.microPos);
-      const container = this.createCharacter(serverPlayer.type, serverPlayer.microPos, serverPlayer.y);
-      container.setDepth(100);
-      this.playerEntities.set(sessionId, { container, serverState: serverPlayer });
-
-      if (sessionId === this.localSessionId) {
-        this.localPlayerReady = true;
-        console.log('✅ LOCAL PLAYER READY – microPos:', serverPlayer.microPos);
-        this.updateUI(serverPlayer);
-      }
-    });
-
-    playersMap.onRemove((serverPlayer: Player, sessionId: string) => {
-      console.log("❌ Player REMOVED → sessionId:", sessionId);
-      const entity = this.playerEntities.get(sessionId);
-      if (entity) {
-        entity.container.destroy();
-        this.playerEntities.delete(sessionId);
-      }
-    });
-
-    playersMap.onChange((serverPlayer: Player, sessionId: string) => {
-      const entity = this.playerEntities.get(sessionId);
-      if (!entity) return;
-      console.log("🔄 Player CHANGED → sessionId:", sessionId, "microPos:", serverPlayer.microPos);
-
-      const newX = this.getMicroPosX(serverPlayer.microPos);
-      if (Math.abs(entity.container.x - newX) > 5) {
-        this.tweens.add({
-          targets: entity.container,
-          x: newX,
-          duration: 140,
-          ease: 'Cubic.easeOut'
+    // Wait for state to be ready
+    room.onStateChange((state: GameState) => {
+      console.log("📊 State changed, setting up listeners...");
+      
+      // Set up onChange listener
+      state.onChange = (changes: any[]) => {
+        changes.forEach((change) => {
+          if (change.field === "raceTimer") this.events.emit('time_update', change.value);
         });
+      };
+
+      // Only set up players listeners once state is ready
+      if (!state.players) {
+        console.warn("⚠️ State.players not ready yet");
+        return;
       }
-      entity.container.y = serverPlayer.y;
-      if (serverPlayer.isDead) entity.container.setAlpha(0);
-      if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
+
+      const playersMap = state.players;
+      
+      // Check if listeners already set up to avoid duplicates
+      if ((playersMap as any)._listenersSetup) return;
+      (playersMap as any)._listenersSetup = true;
+
+      playersMap.onAdd((serverPlayer: Player, sessionId: string) => {
+        console.log("👤 Player ADDED → sessionId:", sessionId, "type:", serverPlayer.type, "microPos:", serverPlayer.microPos);
+        const container = this.createCharacter(serverPlayer.type, serverPlayer.microPos, serverPlayer.y);
+        container.setDepth(100);
+        this.playerEntities.set(sessionId, { container, serverState: serverPlayer });
+
+        if (sessionId === this.localSessionId) {
+          this.localPlayerReady = true;
+          console.log('✅ LOCAL PLAYER READY – microPos:', serverPlayer.microPos);
+          this.updateUI(serverPlayer);
+        }
+      });
+
+      playersMap.onRemove((serverPlayer: Player, sessionId: string) => {
+        console.log("❌ Player REMOVED → sessionId:", sessionId);
+        const entity = this.playerEntities.get(sessionId);
+        if (entity) {
+          entity.container.destroy();
+          this.playerEntities.delete(sessionId);
+        }
+      });
+
+      playersMap.onChange((serverPlayer: Player, sessionId: string) => {
+        const entity = this.playerEntities.get(sessionId);
+        if (!entity) return;
+        console.log("🔄 Player CHANGED → sessionId:", sessionId, "microPos:", serverPlayer.microPos);
+
+        const newX = this.getMicroPosX(serverPlayer.microPos);
+        if (Math.abs(entity.container.x - newX) > 5) {
+          this.tweens.add({
+            targets: entity.container,
+            x: newX,
+            duration: 140,
+            ease: 'Cubic.easeOut'
+          });
+        }
+        entity.container.y = serverPlayer.y;
+        if (serverPlayer.isDead) entity.container.setAlpha(0);
+        if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
+      });
     });
 
+    // Message handlers can be set up immediately (don't need state)
     room.onMessage("dilemma_start", () => {
       this.dilemma.active = true;
       this.dilemma.timer = 3000;
@@ -223,7 +250,7 @@ export class MainScene extends Phaser.Scene {
     room.onMessage("finished", () => this.winGame());
     room.onMessage("race_reset", () => window.location.reload());
 
-    console.log("✅ All Colyseus 0.17 listeners registered");
+    console.log("✅ All Colyseus 0.15+ listeners registered");
   }
 
   createCharacter(type: Species, microPos: number, y: number): Phaser.GameObjects.Container {
@@ -355,6 +382,8 @@ export class MainScene extends Phaser.Scene {
   }
 
   drawRoad() {
+    if (!this.roadGraphics) return; // Safety check
+    
     this.roadGraphics.clear();
     const view = this.cameras.main.worldView;
     const startY = view.top - 200;
