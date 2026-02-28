@@ -130,11 +130,20 @@ export class MainScene extends Phaser.Scene {
     console.log("🚀 Attempting joinOrCreate('global_room')...");
 
     try {
-      this.room = await this.client.joinOrCreate("global_room");
-      console.log("✅ Joined room! roomId:", this.room.roomId, "sessionId:", this.room.sessionId);
+      console.log("🚀 Attempting joinOrCreate('global_room')...");
+      this.room = await this.client.joinOrCreate<GameState>("global_room");   // ← typed + important
 
+      console.log("✅ Joined room! roomId:", this.room.roomId, "sessionId:", this.room.sessionId);
       loadingText.destroy();
-      this.setupNetwork(this.room);   // ← called exactly as the instruction said
+
+      // CRITICAL FIX for Colyseus 0.17: wait for the FIRST state patch
+      console.log("⏳ Waiting for initial state synchronization from server...");
+      
+      this.room.onStateChange.once((state: GameState) => {
+        console.log("✅ Initial state received from server! Setting up listeners now");
+        this.setupNetwork(this.room);
+      });
+
     } catch (e) {
       console.error("❌ joinOrCreate failed:", e);
       loadingText.setText("Connection Failed – refresh page");
@@ -173,7 +182,7 @@ export class MainScene extends Phaser.Scene {
     // 2. Players Map
     const playersMap = room.state.players;
 
-    playersMap.onAdd((serverPlayer: any, sessionId: string) => {
+    playersMap.onAdd((serverPlayer: Player, sessionId: string) => {
       console.log("👤 Player ADDED → sessionId:", sessionId, "type:", serverPlayer.type, "microPos:", serverPlayer.microPos);
 
       const container = this.createCharacter(serverPlayer.type, serverPlayer.microPos, serverPlayer.y);
@@ -183,7 +192,7 @@ export class MainScene extends Phaser.Scene {
       if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
     });
 
-    playersMap.onRemove((serverPlayer: any, sessionId: string) => {
+    playersMap.onRemove((serverPlayer: Player, sessionId: string) => {
       console.log("❌ Player REMOVED → sessionId:", sessionId);
       const entity = this.playerEntities.get(sessionId);
       if (entity) {
@@ -193,7 +202,7 @@ export class MainScene extends Phaser.Scene {
     });
 
     // Listen to ANY change on players (position, death, zone, etc.)
-    playersMap.onChange((serverPlayer: any, sessionId: string) => {
+    playersMap.onChange((serverPlayer: Player, sessionId: string) => {
       const entity = this.playerEntities.get(sessionId);
       if (!entity) return;
 
