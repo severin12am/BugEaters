@@ -23,7 +23,7 @@ const FINISH_LINE_Y = -(RACE_DURATION_SEC * ZONE_SPEEDS.BUG);
 
 interface PlayerEntity {
   container: Phaser.GameObjects.Container;
-  serverState: any;
+  serverState: Player;
 }
 
 // --- UI SCENE ---
@@ -87,6 +87,10 @@ export class MainScene extends Phaser.Scene {
   private swipeStartX: number = 0;
   private isAnimating: boolean = false;
   private dilemma = { active: false, timer: 3000 };
+  private lastMoveTime: number = 0;
+
+  // === NEW DEBUG UI ===
+  private debugText!: Phaser.GameObjects.Text;
 
   constructor() { super('MainScene'); }
 
@@ -126,10 +130,16 @@ export class MainScene extends Phaser.Scene {
       });
 
       loadingText.destroy();
-      this.room.onStateChange.once((state: GameState) => {
-        console.log("✅ First full state patch received");
+
+      if (this.room.state) {
+        console.log("✅ State already available");
         this.setupNetwork(this.room);
-      });
+      } else {
+        this.room.onStateChange.once((state: GameState) => {
+          console.log("✅ First full state patch received");
+          this.setupNetwork(this.room);
+        });
+      }
     } catch (e: any) {
       console.error("❌ joinOrCreate failed:", e);
       loadingText.setText("Connection Failed – refresh page");
@@ -154,6 +164,11 @@ export class MainScene extends Phaser.Scene {
       console.log(`🔑 KEYUP → key: ${event.key}`);
     }, this);
 
+    // === DEBUG TEXT ON SCREEN (yellow box) ===
+    this.debugText = this.add.text(16, 60, 'Local microPos: -- | y: --', {
+      fontSize: '22px', color: '#ffff00', backgroundColor: '#000000aa', padding: { x: 8, y: 4 }
+    }).setDepth(1000);
+
     console.log('✅ Keyboard listeners attached');
 
     this.events.on('dilemma_choice', (choice: string) => {
@@ -177,7 +192,10 @@ export class MainScene extends Phaser.Scene {
       const container = this.createCharacter(serverPlayer.type, serverPlayer.microPos, serverPlayer.y);
       container.setDepth(100);
       this.playerEntities.set(sessionId, { container, serverState: serverPlayer });
-      if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
+      if (sessionId === this.localSessionId) {
+        console.log("🎮 THIS IS YOU! Local player created");
+        this.updateUI(serverPlayer);
+      }
     });
 
     playersMap.onRemove((serverPlayer: Player, sessionId: string) => {
@@ -192,7 +210,7 @@ export class MainScene extends Phaser.Scene {
     playersMap.onChange((serverPlayer: Player, sessionId: string) => {
       const entity = this.playerEntities.get(sessionId);
       if (!entity) return;
-      console.log("🔄 Player CHANGED → sessionId:", sessionId, "microPos:", serverPlayer.microPos);
+      console.log("🔄 Player CHANGED → sessionId:", sessionId, "microPos:", serverPlayer.microPos, "y:", serverPlayer.y);
 
       const newX = this.getMicroPosX(serverPlayer.microPos);
       if (Math.abs(entity.container.x - newX) > 5) {
@@ -205,7 +223,10 @@ export class MainScene extends Phaser.Scene {
       }
       entity.container.y = serverPlayer.y;
       if (serverPlayer.isDead) entity.container.setAlpha(0);
-      if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
+      if (sessionId === this.localSessionId) {
+        this.debugText.setText(`Local microPos: ${serverPlayer.microPos} | y: ${Math.floor(serverPlayer.y)}`);
+        this.updateUI(serverPlayer);
+      }
     });
 
     room.onMessage("dilemma_start", () => {
@@ -256,10 +277,17 @@ export class MainScene extends Phaser.Scene {
   }
 
   sendMove(direction: number) {
+    const now = Date.now();
+    if (now - this.lastMoveTime < 120) return;
+    this.lastMoveTime = now;
+
     if (!this.room || this.isAnimating || this.isDead || this.isFinished) return;
 
     const localEntity = this.playerEntities.get(this.localSessionId);
-    if (!localEntity) return;
+    if (!localEntity) {
+      console.error("❌ sendMove: No local entity yet!");
+      return;
+    }
 
     const currentMicroPos = localEntity.serverState.microPos;
     const targetM = currentMicroPos + direction;
@@ -283,7 +311,7 @@ export class MainScene extends Phaser.Scene {
       return;
     }
 
-    // INSTANT LOCAL PREDICTION (zero-lag movement)
+    // INSTANT LOCAL PREDICTION
     const newX = this.getMicroPosX(targetM);
     this.tweens.add({
       targets: localEntity.container,
@@ -292,7 +320,7 @@ export class MainScene extends Phaser.Scene {
       ease: 'Cubic.easeOut'
     });
 
-    console.log(`📤 [CLIENT → SERVER] Sending "move" with direction=${direction}`);
+    console.log(`📤 [CLIENT → SERVER] SENDING "move" direction=${direction} (${currentMicroPos} → ${targetM})`);
     this.room.send("move", direction);
   }
 
@@ -323,13 +351,13 @@ export class MainScene extends Phaser.Scene {
   update(time: number, delta: number) {
     if (!this.room) return;
 
-    // === CLEAN MOVEMENT (JustDown + swipe already handled) ===
+    // === CLEAN MOVEMENT (only JustDown + swipe) ===
     if (this.cursors && !this.isAnimating && !this.isDead && !this.isFinished) {
       if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) this.sendMove(-1);
       if (Phaser.Input.Keyboard.JustDown(this.cursors.right)) this.sendMove(1);
     }
 
-    // Client-side vertical scrolling
+    // client-side vertical scrolling
     this.playerEntities.forEach((entity) => {
       if (entity.serverState.isDead || entity.serverState.isFinished) return;
       const speed = this.getZoneInfo(entity.serverState.microPos).speed;
