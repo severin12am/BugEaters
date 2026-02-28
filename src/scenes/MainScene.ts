@@ -15,6 +15,7 @@ const BARRIER_1_X = BUG_LANES * LANE_WIDTH;
 const BARRIER_2_X = BARRIER_1_X + (MAN_LANES * LANE_WIDTH);
 const B_CYCLE = 1200;
 const B_SOLID = 900;
+
 type Species = 'BUG' | 'MAN' | 'KLAUS';
 const ZONE_SPEEDS = { BUG: 250, MAN: 250, KLAUS: 250 };
 const RACE_DURATION_SEC = 70;
@@ -31,18 +32,14 @@ class UIScene extends Phaser.Scene {
   private timerText!: Phaser.GameObjects.Text;
   private dilemmaContainer!: Phaser.GameObjects.Container;
   private dilemmaTimerText!: Phaser.GameObjects.Text;
-
   constructor() { super({ key: 'UIScene', active: false }); }
-
   create() {
     this.zoneText = this.add.text(16, 16, 'ZONE: BUG (Guest) | SPD: 250', {
       fontSize: '24px', color: '#4caf50', fontStyle: 'bold', backgroundColor: '#000000aa', padding: { x: 10, y: 5 }
     }).setDepth(1000);
-
     this.timerText = this.add.text(this.scale.width / 2, 16, `${RACE_DURATION_SEC.toFixed(1)}s`, {
       fontSize: '32px', color: '#ffffff', fontStyle: 'bold', backgroundColor: '#000000aa', padding: { x: 15, y: 5 }
     }).setOrigin(0.5, 0).setDepth(1000);
-
     const mainScene = this.scene.get('MainScene') as MainScene;
     mainScene.events.on('zone_changed', (zone: string, speed: number) => {
       this.zoneText.setText(`ZONE: ${zone} | SPD: ${speed}`);
@@ -50,34 +47,26 @@ class UIScene extends Phaser.Scene {
       else if (zone.includes('MAN')) this.zoneText.setColor('#2196f3');
       else this.zoneText.setColor('#f44336');
     });
-
     mainScene.events.on('time_update', (timeLeft: number) => {
       this.timerText.setText(`${Math.max(0, timeLeft).toFixed(1)}s`);
       this.timerText.setColor(timeLeft <= 3 ? '#f44336' : timeLeft <= 10 ? '#ffeb3b' : '#ffffff');
     });
-
     this.createDilemmaUI(mainScene);
   }
-
   createDilemmaUI(mainScene: Phaser.Scene) {
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2;
     this.dilemmaContainer = this.add.container(cx, cy).setDepth(2000).setVisible(false);
-
     const bg = this.add.rectangle(0, 0, 360, 200, 0x000000, 0.9).setStrokeStyle(4, 0xffffff);
     const title = this.add.text(0, -60, 'SAME SPECIES!\nEat or Cooperate?', { fontSize: '22px', color: '#ffffff', fontStyle: 'bold', align: 'center' }).setOrigin(0.5);
     this.dilemmaTimerText = this.add.text(0, -10, '3.0s', { fontSize: '32px', color: '#ffeb3b', fontStyle: 'bold' }).setOrigin(0.5);
-
     const eatBtn = this.add.rectangle(-80, 50, 130, 50, 0xf44336).setInteractive();
     const eatTxt = this.add.text(-80, 50, 'EAT', { fontSize: '20px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
     const coopBtn = this.add.rectangle(80, 50, 130, 50, 0x4caf50).setInteractive();
     const coopTxt = this.add.text(80, 50, 'COOP', { fontSize: '20px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
-
     eatBtn.on('pointerdown', () => mainScene.events.emit('dilemma_choice', 'EAT'));
     coopBtn.on('pointerdown', () => mainScene.events.emit('dilemma_choice', 'COOP'));
-
     this.dilemmaContainer.add([bg, title, this.dilemmaTimerText, eatBtn, eatTxt, coopBtn, coopTxt]);
-
     mainScene.events.on('dilemma_start', () => { this.dilemmaContainer.setVisible(true); this.dilemmaTimerText.setText('3.0s'); });
     mainScene.events.on('dilemma_update', (timeLeft: number) => { this.dilemmaTimerText.setText((timeLeft / 1000).toFixed(1) + 's'); });
     mainScene.events.on('dilemma_end', () => { this.dilemmaContainer.setVisible(false); });
@@ -110,7 +99,6 @@ export class MainScene extends Phaser.Scene {
     console.log("🔗 Colyseus connecting to:", serverUrl);
     this.client = new Client(serverUrl);
     console.log("✅ Colyseus client created with SDK 0.17");
-
     if (!this.scene.get('UIScene')) {
       this.scene.add('UIScene', UIScene, true);
     }
@@ -119,11 +107,9 @@ export class MainScene extends Phaser.Scene {
   async create() {
     console.log('=== 🚀 MainScene.create() CALLED ===');
     console.log('Keyboard plugin exists?', !!this.input.keyboard);
-
     const { width } = this.scale;
     const zoom = width / 540;
     this.cameras.main.setZoom(zoom);
-
     this.roadGraphics = this.add.graphics().setDepth(0);
 
     const loadingText = this.add.text(0, 0, "Connecting...", { fontSize: '40px', color: '#ffffff' })
@@ -131,32 +117,25 @@ export class MainScene extends Phaser.Scene {
     this.cameras.main.centerOn(loadingText.x, loadingText.y);
 
     console.log("🚀 Attempting joinOrCreate('global_room')...");
-
     try {
       this.room = await this.client.joinOrCreate<GameState>("global_room");
-
       console.log("✅ Joined room! roomId:", this.room.roomId, "sessionId:", this.room.sessionId);
 
-      // Debug EVERY message coming back from server
       this.room.onMessage("*", (type: string, message: any) => {
         console.log(`📥 [SERVER → CLIENT] type: "${type}"`, message);
       });
 
       loadingText.destroy();
-
-      // ←←← FIXED COLYSEUS 0.17 INITIAL STATE HANDLING (recommended pattern)
       this.room.onStateChange.once((state: GameState) => {
-        console.log("✅ First full state patch received – schema is now fully initialized");
+        console.log("✅ First full state patch received");
         this.setupNetwork(this.room);
       });
-
     } catch (e: any) {
       console.error("❌ joinOrCreate failed:", e);
       loadingText.setText("Connection Failed – refresh page");
       return;
     }
 
-    // Input handlers
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => { this.isSwiping = true; this.swipeStartX = p.x; });
     this.input.on('pointerup', (p: Phaser.Input.Pointer) => {
       if (!this.isSwiping || this.isAnimating || this.isDead || this.isFinished) return;
@@ -166,15 +145,15 @@ export class MainScene extends Phaser.Scene {
       else if (swipeDist < -40) this.sendMove(-1);
     });
 
-    this.cursors = this.input.keyboard!.createCursorKeys(); // keep your line
+    this.cursors = this.input.keyboard!.createCursorKeys();
 
-    // === GLOBAL KEY TEST (catches ANY arrow press) ===
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
       console.log(`🔑 KEYDOWN → key: ${event.key} | code: ${event.code} | time: ${Date.now()}`);
     }, this);
     this.input.keyboard?.on('keyup', (event: KeyboardEvent) => {
       console.log(`🔑 KEYUP → key: ${event.key}`);
     }, this);
+
     console.log('✅ Keyboard listeners attached');
 
     this.events.on('dilemma_choice', (choice: string) => {
@@ -182,32 +161,22 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
-  // === CLEAN OFFICIAL COLYSEUS 0.17 SETUP ===
   private setupNetwork(room: Room<GameState>) {
     this.localSessionId = room.sessionId!;
-
     console.log("🔗 setupNetwork started – local sessionId:", this.localSessionId);
 
-    // 1. Race Timer – modern root onChange (recommended for 0.17+)
     room.state.onChange = (changes: any[]) => {
       changes.forEach((change) => {
-        if (change.field === "raceTimer") {
-          console.log("⏱️ raceTimer updated →", change.value);
-          this.events.emit('time_update', change.value);
-        }
+        if (change.field === "raceTimer") this.events.emit('time_update', change.value);
       });
     };
 
-    // 2. Players Map
     const playersMap = room.state.players;
-
     playersMap.onAdd((serverPlayer: Player, sessionId: string) => {
       console.log("👤 Player ADDED → sessionId:", sessionId, "type:", serverPlayer.type, "microPos:", serverPlayer.microPos);
-
       const container = this.createCharacter(serverPlayer.type, serverPlayer.microPos, serverPlayer.y);
       container.setDepth(100);
       this.playerEntities.set(sessionId, { container, serverState: serverPlayer });
-
       if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
     });
 
@@ -220,33 +189,25 @@ export class MainScene extends Phaser.Scene {
       }
     });
 
-    // Listen to ANY change on players (position, death, zone, etc.)
     playersMap.onChange((serverPlayer: Player, sessionId: string) => {
       const entity = this.playerEntities.get(sessionId);
       if (!entity) return;
-
-      console.log("🔄 Player CHANGED → sessionId:", sessionId, "microPos:", serverPlayer.microPos, "y:", serverPlayer.y);
+      console.log("🔄 Player CHANGED → sessionId:", sessionId, "microPos:", serverPlayer.microPos);
 
       const newX = this.getMicroPosX(serverPlayer.microPos);
-      if (entity.container.x !== newX) {
-        if (sessionId === this.localSessionId) this.isAnimating = true;
+      if (Math.abs(entity.container.x - newX) > 5) {
         this.tweens.add({
           targets: entity.container,
           x: newX,
-          duration: 150,
-          ease: 'Cubic.easeOut',
-          onComplete: () => { if (sessionId === this.localSessionId) this.isAnimating = false; }
+          duration: 140,
+          ease: 'Cubic.easeOut'
         });
       }
-
+      entity.container.y = serverPlayer.y;
       if (serverPlayer.isDead) entity.container.setAlpha(0);
-      if (Math.abs(entity.container.y - serverPlayer.y) > 50) {
-        entity.container.y = serverPlayer.y;
-      }
       if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
     });
 
-    // Room messages
     room.onMessage("dilemma_start", () => {
       this.dilemma.active = true;
       this.dilemma.timer = 3000;
@@ -262,10 +223,9 @@ export class MainScene extends Phaser.Scene {
     room.onMessage("finished", () => this.winGame());
     room.onMessage("race_reset", () => window.location.reload());
 
-    console.log("✅ All Colyseus 0.17 listeners registered (official native style)");
+    console.log("✅ All Colyseus 0.17 listeners registered");
   }
 
-  // ALL OTHER METHODS UNCHANGED
   createCharacter(type: Species, microPos: number, y: number): Phaser.GameObjects.Container {
     let color, emoji;
     if (type === 'BUG') { color = 0x4caf50; emoji = '🐛'; }
@@ -296,9 +256,11 @@ export class MainScene extends Phaser.Scene {
   }
 
   sendMove(direction: number) {
-console.log('📤 [CLIENT → SERVER] sendMove called with direction =', direction);
+    if (!this.room || this.isAnimating || this.isDead || this.isFinished) return;
+
     const localEntity = this.playerEntities.get(this.localSessionId);
     if (!localEntity) return;
+
     const currentMicroPos = localEntity.serverState.microPos;
     const targetM = currentMicroPos + direction;
     if (targetM < 0 || targetM >= TOTAL_MICRO) return;
@@ -320,6 +282,16 @@ console.log('📤 [CLIENT → SERVER] sendMove called with direction =', directi
       });
       return;
     }
+
+    // INSTANT LOCAL PREDICTION (zero-lag movement)
+    const newX = this.getMicroPosX(targetM);
+    this.tweens.add({
+      targets: localEntity.container,
+      x: newX,
+      duration: 80,
+      ease: 'Cubic.easeOut'
+    });
+
     console.log(`📤 [CLIENT → SERVER] Sending "move" with direction=${direction}`);
     this.room.send("move", direction);
   }
@@ -349,36 +321,15 @@ console.log('📤 [CLIENT → SERVER] sendMove called with direction =', directi
   }
 
   update(time: number, delta: number) {
-    console.log('📡 MainScene.update() running'); // will spam a lot – you can comment it out after first test
-
-// === LEFT BLOCK ===
-if (this.cursors?.left.isDown) {
-  console.log('🚀 [CLIENT] LEFT isDown → preparing to send to server');
-
-      if (this.room) {
-        console.log('📤 [CLIENT → SERVER] Sending message type:', '???');   // ← we will change '???' in next step
-        // <<< YOUR ORIGINAL MOVEMENT CODE GOES HERE (room.send, set velocity, etc.) >>>
-    console.log('✅ [CLIENT] room.send() was executed for LEFT');
-  } else {
-    console.error('❌ [CLIENT] this.room is null!');
-  }
-}
-
-// === RIGHT BLOCK === (same but for right)
-if (this.cursors?.right.isDown) {
-  console.log('🚀 [CLIENT] RIGHT isDown → preparing to send to server');
-
-       if (this.room) {
-        console.log('📤 [CLIENT → SERVER] Sending message type:', '???');   // ← we will change '???' in next step
-        // <<< YOUR ORIGINAL MOVEMENT CODE GOES HERE (room.send, set velocity, etc.) >>>
-
-    console.log('✅ [CLIENT] room.send() was executed for RIGHT');
-  } else {
-    console.error('❌ [CLIENT] this.room is null!');
-  }
-}
     if (!this.room) return;
 
+    // === CLEAN MOVEMENT (JustDown + swipe already handled) ===
+    if (this.cursors && !this.isAnimating && !this.isDead && !this.isFinished) {
+      if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) this.sendMove(-1);
+      if (Phaser.Input.Keyboard.JustDown(this.cursors.right)) this.sendMove(1);
+    }
+
+    // Client-side vertical scrolling
     this.playerEntities.forEach((entity) => {
       if (entity.serverState.isDead || entity.serverState.isFinished) return;
       const speed = this.getZoneInfo(entity.serverState.microPos).speed;
@@ -388,11 +339,6 @@ if (this.cursors?.right.isDown) {
     if (this.dilemma.active) {
       this.dilemma.timer -= delta;
       this.events.emit('dilemma_update', this.dilemma.timer);
-    }
-
-    if (this.cursors && !this.isAnimating && !this.isDead && !this.isFinished) {
-      if (Phaser.Input.Keyboard.JustDown(this.cursors.right)) this.sendMove(1);
-      else if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) this.sendMove(-1);
     }
 
     const localEntity = this.playerEntities.get(this.localSessionId);
@@ -409,7 +355,6 @@ if (this.cursors?.right.isDown) {
     const view = this.cameras.main.worldView;
     const startY = view.top - 200;
     const endY = view.bottom + 200;
-
     for (let i = 0; i <= TOTAL_MICRO; i++) {
       const x = i * MICRO_WIDTH;
       if (x === BARRIER_1_X || x === BARRIER_2_X) continue;
@@ -420,17 +365,14 @@ if (this.cursors?.right.isDown) {
       this.roadGraphics.lineTo(x, endY);
       this.roadGraphics.strokePath();
     }
-
     this.roadGraphics.fillStyle(0xffffff, 1);
     const startCycle = Math.floor(startY / B_CYCLE);
     const endCycle = Math.ceil(endY / B_CYCLE);
-
     for (let k = startCycle; k <= endCycle; k++) {
       const cycleY = k * B_CYCLE;
       this.roadGraphics.fillRect(BARRIER_1_X - 4, cycleY, 8, B_SOLID);
       this.roadGraphics.fillRect(BARRIER_2_X - 4, cycleY + 600, 8, B_SOLID);
     }
-
     if (FINISH_LINE_Y >= startY && FINISH_LINE_Y <= endY + 200) {
       const sqSize = 30;
       for (let row = 0; row < 4; row++) {

@@ -8,9 +8,8 @@ import cors from "cors";
 import { Schema, type, MapSchema } from "@colyseus/schema";
 
 const app = express();
-// Force allow all CORS so the proxy doesn't block preflight requests
 app.use(cors({
-  origin: true,           // ← fixes wildcard + credentials issue
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -41,13 +40,14 @@ export class GameState extends Schema {
 const ZONE_SPEEDS = { BUG: 250, MAN: 250, KLAUS: 250 };
 const RACE_DURATION_SEC = 70;
 const FINISH_LINE_Y = -(RACE_DURATION_SEC * ZONE_SPEEDS.BUG);
-const B_CYCLE = 1200; 
+const B_CYCLE = 1200;
 const B_SOLID = 900;
+const TOTAL_MICRO = 27;
 
 const isBarrierSolid = (barrierNum: number, yPos: number): boolean => {
-  const offset = barrierNum === 2 ? 600 : 0; 
+  const offset = barrierNum === 2 ? 600 : 0;
   const localY = ((yPos - offset) % B_CYCLE + B_CYCLE) % B_CYCLE;
-  return localY < B_SOLID; 
+  return localY < B_SOLID;
 };
 
 // --- ROOM ---
@@ -57,21 +57,34 @@ export class GlobalRoom extends Room<GameState> {
 
   onCreate() {
     this.setState(new GameState());
-    this.setSimulationInterval((dt) => this.update(dt), 16); 
+    this.setSimulationInterval((dt) => this.update(dt), 16);
 
+    // === FIXED + LOGGED MOVE HANDLER ===
     this.onMessage("move", (client, direction) => {
+      console.log(`[SERVER] 📥 MOVE received from ${client.sessionId} direction=${direction}`);
+
       const p = this.state.players.get(client.sessionId);
-      if (!p || p.isDead || p.isFinished || p.dilemmaId) return; 
+      if (!p || p.isDead || p.isFinished || p.dilemmaId) {
+        console.log(`[SERVER] Move rejected (dead/finished/dilemma)`);
+        return;
+      }
 
       const targetM = p.microPos + direction;
-      if (targetM < 0 || targetM >= 27) return;
+      if (targetM < 0 || targetM >= TOTAL_MICRO) {
+        console.log(`[SERVER] Move out of bounds`);
+        return;
+      }
 
       let barrierCrossed = 0;
       if ((p.microPos === 17 && targetM === 18) || (p.microPos === 18 && targetM === 17)) barrierCrossed = 1;
       if ((p.microPos === 23 && targetM === 24) || (p.microPos === 24 && targetM === 23)) barrierCrossed = 2;
 
-      if (barrierCrossed > 0 && isBarrierSolid(barrierCrossed, p.y)) return; 
-      
+      if (barrierCrossed > 0 && isBarrierSolid(barrierCrossed, p.y)) {
+        console.log(`[SERVER] Barrier blocked`);
+        return;
+      }
+
+      console.log(`[SERVER] ✅ Applied move: ${p.microPos} → ${targetM}`);
       p.microPos = targetM;
     });
 
@@ -89,11 +102,12 @@ export class GlobalRoom extends Room<GameState> {
 
   onJoin(client: Client) {
     const p = new Player();
-    const types =["BUG", "MAN", "KLAUS"];
+    const types = ["BUG", "MAN", "KLAUS"];
     p.type = types[Math.floor(Math.random() * types.length)];
     p.microPos = p.type === "BUG" ? 9 : (p.type === "MAN" ? 20 : 25);
     p.y = 0;
     this.state.players.set(client.sessionId, p);
+    console.log(`[SERVER] ${client.sessionId} joined as ${p.type}`);
   }
 
   onLeave(client: Client) {
@@ -110,7 +124,6 @@ export class GlobalRoom extends Room<GameState> {
     }
 
     const players = Array.from(this.state.players.entries());
-
     players.forEach(([id, p]) => {
       if (!p.isDead && !p.isFinished) {
         const speed = p.type === "BUG" ? ZONE_SPEEDS.BUG : (p.type === "MAN" ? ZONE_SPEEDS.MAN : ZONE_SPEEDS.KLAUS);
@@ -127,9 +140,7 @@ export class GlobalRoom extends Room<GameState> {
       for (let j = i + 1; j < players.length; j++) {
         const [id1, p1] = players[i];
         const [id2, p2] = players[j];
-
         if (p1.isDead || p2.isDead || p1.isFinished || p2.isFinished || p1.dilemmaId || p2.dilemmaId) continue;
-
         if (p1.microPos === p2.microPos && Math.abs(p1.y - p2.y) < 40) {
           if (p1.type === p2.type) {
             const dId = id1 + "_" + id2;
@@ -169,7 +180,6 @@ export class GlobalRoom extends Room<GameState> {
         const c2 = d.choice2 || "COOP";
         const client1 = this.clients.find(c => c.sessionId === d.p1.id);
         const client2 = this.clients.find(c => c.sessionId === d.p2.id);
-
         if (c1 === "EAT" && c2 === "EAT") {
           d.p1.player.isDead = true; d.p2.player.isDead = true;
           if (client1) client1.send("eaten", "BOTH ATE!\nMutual Destruction!");
@@ -186,7 +196,6 @@ export class GlobalRoom extends Room<GameState> {
           if (client1) client1.send("coop_success", "MUTUAL COOPERATION");
           if (client2) client2.send("coop_success", "MUTUAL COOPERATION");
         }
-
         d.p1.player.dilemmaId = ""; d.p2.player.dilemmaId = "";
         if (client1) client1.send("dilemma_end");
         if (client2) client2.send("dilemma_end");
@@ -195,48 +204,37 @@ export class GlobalRoom extends Room<GameState> {
     });
   }
 }
-gameServer.define("global_room", GlobalRoom);
 
-// ← THIS LINE MUST BE HERE (registers /matchmake)
+gameServer.define("global_room", GlobalRoom);
 gameServer.attach({ server: httpServer });
 
 // Railway production setup
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Serve the static frontend files
 app.use(express.static(path.join(__dirname, "dist")));
 
-// Add this right BEFORE app.get(/(.*)/)
-// --- MATCHMAKING ROUTE ---
-// --- MATCHMAKING ROUTE (fixed - returns full reservation) ---
 app.post("/matchmake/:method/:roomName", async (req, res) => {
   try {
     const { method, roomName } = req.params;
     const options = req.body || {};
-
     let reservation;
     if (method === "joinOrCreate") {
       reservation = await matchMaker.joinOrCreate(roomName, options);
     } else {
       return res.status(400).json({ error: "Unsupported method" });
     }
-
-    // Return the FULL original reservation object (this fixes the .name error)
     res.json(reservation);
   } catch (e: any) {
     console.error("Matchmake error:", e);
     res.status(500).json({ error: e.message });
   }
 });
-// SPA fallback - must be LAST
+
 app.get(/(.*)/, (req, res) => {
    res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
 const PORT = Number(process.env.PORT || 2567);
-
-// MUST use gameServer.listen() so Colyseus initializes fully!
 gameServer.listen(PORT, "0.0.0.0");
 console.log(`🚀 Bugeaters multiplayer live on port ${PORT}`);
-console.log(`🌐 Play here: https://${process.env.RAILWAY_PUBLIC_DOMAIN}`);
