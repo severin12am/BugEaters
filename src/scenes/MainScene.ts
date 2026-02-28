@@ -117,6 +117,9 @@ export class MainScene extends Phaser.Scene {
   }
 
   async create() {
+    console.log('=== 🚀 MainScene.create() CALLED ===');
+    console.log('Keyboard plugin exists?', !!this.input.keyboard);
+
     const { width } = this.scale;
     const zoom = width / 540;
     this.cameras.main.setZoom(zoom);
@@ -157,7 +160,16 @@ export class MainScene extends Phaser.Scene {
       else if (swipeDist < -40) this.sendMove(-1);
     });
 
-    if (this.input.keyboard) this.cursors = this.input.keyboard.createCursorKeys();
+    this.cursors = this.input.keyboard!.createCursorKeys(); // keep your line
+
+    // === GLOBAL KEY TEST (catches ANY arrow press) ===
+    this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
+      console.log(`🔑 KEYDOWN → key: ${event.key} | code: ${event.code} | time: ${Date.now()}`);
+    }, this);
+    this.input.keyboard?.on('keyup', (event: KeyboardEvent) => {
+      console.log(`🔑 KEYUP → key: ${event.key}`);
+    }, this);
+    console.log('✅ Keyboard listeners attached');
 
     this.events.on('dilemma_choice', (choice: string) => {
       if (this.dilemma.active && this.room) this.room.send('dilemma_choice', choice);
@@ -329,6 +341,14 @@ export class MainScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number) {
+    console.log('📡 MainScene.update() running'); // will spam a lot – you can comment it out after first test
+    if (this.cursors?.left.isDown) {
+      console.log('⬅️ LEFT isDown detected'); // your existing movement / room.send() code stays untouched
+    }
+    if (this.cursors?.right.isDown) {
+      console.log('➡️ RIGHT isDown detected'); // your existing movement / room.send() code
+    }
+
     if (!this.room) return;
 
     this.playerEntities.forEach((entity) => {
