@@ -349,32 +349,32 @@ export class MainScene extends Phaser.Scene {
   update(time: number, delta: number) {
     console.log('📡 MainScene.update() running'); // will spam a lot – you can comment it out after first test
 
-    // === LEFT BLOCK ===
-    if (this.cursors?.left.isDown) {
-      console.log('🚀 [CLIENT] LEFT isDown → preparing to send to server');
+// === LEFT BLOCK ===
+if (this.cursors?.left.isDown) {
+  console.log('🚀 [CLIENT] LEFT isDown → preparing to send to server');
 
       if (this.room) {
+        console.log('📤 [CLIENT → SERVER] Sending message type:', '???');   // ← we will change '???' in next step
         // <<< YOUR ORIGINAL MOVEMENT CODE GOES HERE (room.send, set velocity, etc.) >>>
-        // (your actual JustDown + sendMove logic remains untouched below)
-        console.log('✅ [CLIENT] room.send() was executed for LEFT (via JustDown)');
-      } else {
-        console.error('❌ [CLIENT] this.room is null or undefined!');
-      }
-    }
+    console.log('✅ [CLIENT] room.send() was executed for LEFT');
+  } else {
+    console.error('❌ [CLIENT] this.room is null!');
+  }
+}
 
-    // === RIGHT BLOCK ===
-    if (this.cursors?.right.isDown) {
-      console.log('🚀 [CLIENT] RIGHT isDown → preparing to send to server');
+// === RIGHT BLOCK === (same but for right)
+if (this.cursors?.right.isDown) {
+  console.log('🚀 [CLIENT] RIGHT isDown → preparing to send to server');
 
-      if (this.room) {
-        // <<< YOUR ORIGINAL MOVEMENT CODE GOES HERE >>>
-        // (your actual JustDown + sendMove logic remains untouched below)
-        console.log('✅ [CLIENT] room.send() was executed for RIGHT (via JustDown)');
-      } else {
-        console.error('❌ [CLIENT] this.room is null or undefined!');
-      }
-    }
+       if (this.room) {
+        console.log('📤 [CLIENT → SERVER] Sending message type:', '???');   // ← we will change '???' in next step
+        // <<< YOUR ORIGINAL MOVEMENT CODE GOES HERE (room.send, set velocity, etc.) >>>
 
+    console.log('✅ [CLIENT] room.send() was executed for RIGHT');
+  } else {
+    console.error('❌ [CLIENT] this.room is null!');
+  }
+}
     if (!this.room) return;
 
     this.playerEntities.forEach((entity) => {
