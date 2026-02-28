@@ -320,6 +320,7 @@ console.log('📤 [CLIENT → SERVER] sendMove called with direction =', directi
       });
       return;
     }
+    console.log(`📤 [CLIENT → SERVER] Sending "move" with direction=${direction}`);
     this.room.send("move", direction);
   }
 
