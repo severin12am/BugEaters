@@ -80,6 +80,7 @@ export class MainScene extends Phaser.Scene {
   private roadGraphics!: Phaser.GameObjects.Graphics;
   private playerEntities = new Map<string, PlayerEntity>();
   private localSessionId: string = "";
+  private localPlayerReady: boolean = false;   // ← NEW
   private isDead: boolean = false;
   private isFinished: boolean = false;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -106,7 +107,6 @@ export class MainScene extends Phaser.Scene {
 
   async create() {
     console.log('=== 🚀 MainScene.create() CALLED ===');
-    console.log('Keyboard plugin exists?', !!this.input.keyboard);
     const { width } = this.scale;
     const zoom = width / 540;
     this.cameras.main.setZoom(zoom);
@@ -126,10 +126,10 @@ export class MainScene extends Phaser.Scene {
       });
 
       loadingText.destroy();
-      this.room.onStateChange.once((state: GameState) => {
-        console.log("✅ First full state patch received");
-        this.setupNetwork(this.room);
-      });
+
+      // ←←← FIXED: Setup network listeners immediately (before initial state arrives)
+      this.setupNetwork(this.room);
+
     } catch (e: any) {
       console.error("❌ joinOrCreate failed:", e);
       loadingText.setText("Connection Failed – refresh page");
@@ -148,13 +148,8 @@ export class MainScene extends Phaser.Scene {
     this.cursors = this.input.keyboard!.createCursorKeys();
 
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
-      console.log(`🔑 KEYDOWN → key: ${event.key} | code: ${event.code} | time: ${Date.now()}`);
+      console.log(`🔑 KEYDOWN → key: ${event.key} | code: ${event.code}`);
     }, this);
-    this.input.keyboard?.on('keyup', (event: KeyboardEvent) => {
-      console.log(`🔑 KEYUP → key: ${event.key}`);
-    }, this);
-
-    console.log('✅ Keyboard listeners attached');
 
     this.events.on('dilemma_choice', (choice: string) => {
       if (this.dilemma.active && this.room) this.room.send('dilemma_choice', choice);
@@ -177,7 +172,12 @@ export class MainScene extends Phaser.Scene {
       const container = this.createCharacter(serverPlayer.type, serverPlayer.microPos, serverPlayer.y);
       container.setDepth(100);
       this.playerEntities.set(sessionId, { container, serverState: serverPlayer });
-      if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
+
+      if (sessionId === this.localSessionId) {
+        this.localPlayerReady = true;
+        console.log('✅ LOCAL PLAYER READY – microPos:', serverPlayer.microPos);
+        this.updateUI(serverPlayer);
+      }
     });
 
     playersMap.onRemove((serverPlayer: Player, sessionId: string) => {
@@ -256,6 +256,10 @@ export class MainScene extends Phaser.Scene {
   }
 
   sendMove(direction: number) {
+    if (!this.localPlayerReady) {
+      console.warn('🚫 sendMove blocked – local player not ready yet');
+      return;
+    }
     if (!this.room || this.isAnimating || this.isDead || this.isFinished) return;
 
     const localEntity = this.playerEntities.get(this.localSessionId);
@@ -283,7 +287,7 @@ export class MainScene extends Phaser.Scene {
       return;
     }
 
-    // INSTANT LOCAL PREDICTION (zero-lag movement)
+    // INSTANT LOCAL PREDICTION
     const newX = this.getMicroPosX(targetM);
     this.tweens.add({
       targets: localEntity.container,
@@ -323,8 +327,8 @@ export class MainScene extends Phaser.Scene {
   update(time: number, delta: number) {
     if (!this.room) return;
 
-    // === CLEAN MOVEMENT (JustDown + swipe already handled) ===
-    if (this.cursors && !this.isAnimating && !this.isDead && !this.isFinished) {
+    // Keyboard movement (now guarded by localPlayerReady)
+    if (this.localPlayerReady && this.cursors && !this.isAnimating && !this.isDead && !this.isFinished) {
       if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) this.sendMove(-1);
       if (Phaser.Input.Keyboard.JustDown(this.cursors.right)) this.sendMove(1);
     }
