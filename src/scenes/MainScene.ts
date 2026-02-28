@@ -1,4 +1,5 @@
-import { Client, Room, Callbacks } from '@colyseus/sdk';
+import { Client, Room } from '@colyseus/sdk';
+import { GameState, Player } from '../schema/GameState';
 import Phaser from 'phaser';
 
 // --- WORLD GRID CONFIGURATION ---
@@ -87,7 +88,6 @@ class UIScene extends Phaser.Scene {
 export class MainScene extends Phaser.Scene {
   private client!: Client;
   private room!: Room;
-  private callbacks!: Callbacks;
   private roadGraphics!: Phaser.GameObjects.Graphics;
   private playerEntities = new Map<string, PlayerEntity>();
   private localSessionId: string = "";
@@ -134,7 +134,7 @@ export class MainScene extends Phaser.Scene {
       console.log("✅ Joined room! roomId:", this.room.roomId, "sessionId:", this.room.sessionId);
 
       loadingText.destroy();
-      this.setupNetwork();
+      this.setupNetwork(this.room);   // ← called exactly as the instruction said
     } catch (e) {
       console.error("❌ joinOrCreate failed:", e);
       loadingText.setText("Connection Failed – refresh page");
@@ -158,21 +158,22 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
-  // === FULLY FIXED FOR COLYSEUS 0.17 ===
-  private setupNetwork() {
-    this.localSessionId = this.room.sessionId!;
-    this.callbacks = Callbacks.get(this.room);
+  // === CLEAN OFFICIAL COLYSEUS 0.17 SETUP (called with this.setupNetwork(this.room)) ===
+  private setupNetwork(room: Room<GameState>) {
+    this.localSessionId = room.sessionId!;
 
     console.log("🔗 setupNetwork started – local sessionId:", this.localSessionId);
 
-    // Race timer (top-level state)
-    this.callbacks.listen("raceTimer", (currentValue: number) => {
-      console.log("⏱️ raceTimer updated →", currentValue);
-      this.events.emit('time_update', currentValue);
+    // 1. Race Timer (primitive)
+    room.state.listen("raceTimer", (value: number, previousValue?: number) => {
+      console.log("⏱️ raceTimer updated →", value);
+      this.events.emit('time_update', value);
     });
 
-    // Players Map – ADD
-    this.callbacks.onAdd("players", (serverPlayer: any, sessionId: string) => {
+    // 2. Players Map
+    const playersMap = room.state.players;
+
+    playersMap.onAdd((serverPlayer: any, sessionId: string) => {
       console.log("👤 Player ADDED → sessionId:", sessionId, "type:", serverPlayer.type, "microPos:", serverPlayer.microPos);
 
       const container = this.createCharacter(serverPlayer.type, serverPlayer.microPos, serverPlayer.y);
@@ -180,36 +181,9 @@ export class MainScene extends Phaser.Scene {
       this.playerEntities.set(sessionId, { container, serverState: serverPlayer });
 
       if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
-
-      // Listen to changes on this specific player
-      this.callbacks.onChange(serverPlayer, () => {
-        const entity = this.playerEntities.get(sessionId);
-        if (!entity) return;
-
-        console.log("🔄 Player CHANGED → sessionId:", sessionId, "microPos:", serverPlayer.microPos, "y:", serverPlayer.y);
-
-        const newX = this.getMicroPosX(serverPlayer.microPos);
-        if (entity.container.x !== newX) {
-          if (sessionId === this.localSessionId) this.isAnimating = true;
-          this.tweens.add({
-            targets: entity.container,
-            x: newX,
-            duration: 150,
-            ease: 'Cubic.easeOut',
-            onComplete: () => { if (sessionId === this.localSessionId) this.isAnimating = false; }
-          });
-        }
-
-        if (serverPlayer.isDead) entity.container.setAlpha(0);
-        if (Math.abs(entity.container.y - serverPlayer.y) > 50) {
-          entity.container.y = serverPlayer.y;
-        }
-        if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
-      });
     });
 
-    // Players Map – REMOVE
-    this.callbacks.onRemove("players", (_serverPlayer: any, sessionId: string) => {
+    playersMap.onRemove((serverPlayer: any, sessionId: string) => {
       console.log("❌ Player REMOVED → sessionId:", sessionId);
       const entity = this.playerEntities.get(sessionId);
       if (entity) {
@@ -218,23 +192,49 @@ export class MainScene extends Phaser.Scene {
       }
     });
 
+    // Listen to ANY change on players (position, death, zone, etc.)
+    playersMap.onChange((serverPlayer: any, sessionId: string) => {
+      const entity = this.playerEntities.get(sessionId);
+      if (!entity) return;
+
+      console.log("🔄 Player CHANGED → sessionId:", sessionId, "microPos:", serverPlayer.microPos, "y:", serverPlayer.y);
+
+      const newX = this.getMicroPosX(serverPlayer.microPos);
+      if (entity.container.x !== newX) {
+        if (sessionId === this.localSessionId) this.isAnimating = true;
+        this.tweens.add({
+          targets: entity.container,
+          x: newX,
+          duration: 150,
+          ease: 'Cubic.easeOut',
+          onComplete: () => { if (sessionId === this.localSessionId) this.isAnimating = false; }
+        });
+      }
+
+      if (serverPlayer.isDead) entity.container.setAlpha(0);
+      if (Math.abs(entity.container.y - serverPlayer.y) > 50) {
+        entity.container.y = serverPlayer.y;
+      }
+      if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
+    });
+
     // Room messages
-    this.room.onMessage("dilemma_start", () => {
+    room.onMessage("dilemma_start", () => {
       this.dilemma.active = true;
       this.dilemma.timer = 3000;
       this.events.emit('dilemma_start');
     });
-    this.room.onMessage("dilemma_end", () => {
+    room.onMessage("dilemma_end", () => {
       this.dilemma.active = false;
       this.events.emit('dilemma_end');
     });
-    this.room.onMessage("chomp", (msg) => this.showFloatingText(msg || "CHOMP!", 0x4caf50));
-    this.room.onMessage("eaten", (msg) => this.triggerDeath(msg || "EATEN!"));
-    this.room.onMessage("coop_success", (msg) => this.showFloatingText(msg, 0x2196f3));
-    this.room.onMessage("finished", () => this.winGame());
-    this.room.onMessage("race_reset", () => window.location.reload());
+    room.onMessage("chomp", (msg) => this.showFloatingText(msg || "CHOMP!", 0x4caf50));
+    room.onMessage("eaten", (msg) => this.triggerDeath(msg || "EATEN!"));
+    room.onMessage("coop_success", (msg) => this.showFloatingText(msg, 0x2196f3));
+    room.onMessage("finished", () => this.winGame());
+    room.onMessage("race_reset", () => window.location.reload());
 
-    console.log("✅ All Colyseus 0.17 listeners registered");
+    console.log("✅ All Colyseus 0.17 listeners registered (official native style)");
   }
 
   // ALL OTHER METHODS UNCHANGED
