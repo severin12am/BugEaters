@@ -296,6 +296,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   sendMove(direction: number) {
+console.log('📤 [CLIENT → SERVER] sendMove called with direction =', direction);
     const localEntity = this.playerEntities.get(this.localSessionId);
     if (!localEntity) return;
     const currentMicroPos = localEntity.serverState.microPos;
