@@ -130,14 +130,32 @@ export class MainScene extends Phaser.Scene {
       // Setup network listeners
       this.setupNetwork(this.room);
       
-      // Process any existing players if state is already synchronized
-      if (this.room.state && this.room.state.players) {
-        console.log("📊 Processing existing players...");
-        this.room.state.players.forEach((player, sessionId) => {
-          console.log("👤 Found existing player:", sessionId);
-          // The onAdd handler will be called for these
-        });
-      }
+      // Force camera to starting position
+      this.cameras.main.centerOn(270, 0);
+      
+      // Process any existing players after a small delay
+      setTimeout(() => {
+        if (this.room.state && this.room.state.players) {
+          console.log("📊 Checking for existing players after delay...");
+          this.room.state.players.forEach((player, sessionId) => {
+            console.log("👤 Found existing player:", sessionId, "at microPos:", player.microPos);
+            // Manually trigger onAdd if needed
+            const entity = this.playerEntities.get(sessionId);
+            if (!entity) {
+              console.log("🔧 Manually creating entity for existing player:", sessionId);
+              const container = this.createCharacter(player.type, player.microPos, player.y);
+              container.setDepth(100);
+              this.playerEntities.set(sessionId, { container, serverState: player });
+              
+              if (sessionId === this.localSessionId) {
+                this.localPlayerReady = true;
+                console.log('✅ LOCAL PLAYER READY (manual) – microPos:', player.microPos);
+                this.updateUI(player);
+              }
+            }
+          });
+        }
+      }, 100);
 
     } catch (e: any) {
       console.error("❌ joinOrCreate failed:", e);
@@ -169,69 +187,56 @@ export class MainScene extends Phaser.Scene {
     this.localSessionId = room.sessionId!;
     console.log("🔗 setupNetwork started – local sessionId:", this.localSessionId);
 
-    // Wait for state to be ready
-    room.onStateChange((state: GameState) => {
-      console.log("📊 State changed, setting up listeners...");
-      
-      // Set up onChange listener
-      state.onChange = (changes: any[]) => {
-        changes.forEach((change) => {
-          if (change.field === "raceTimer") this.events.emit('time_update', change.value);
-        });
-      };
+    // Set up state change listener
+    room.state.onChange = (changes: any[]) => {
+      changes.forEach((change) => {
+        if (change.field === "raceTimer") this.events.emit('time_update', change.value);
+      });
+    };
 
-      // Only set up players listeners once state is ready
-      if (!state.players) {
-        console.warn("⚠️ State.players not ready yet");
-        return;
+    // Set up player listeners directly - Colyseus 0.15+ ensures state is ready
+    const playersMap = room.state.players;
+    console.log("📊 Setting up player listeners, current players:", playersMap.size);
+
+    playersMap.onAdd((serverPlayer: Player, sessionId: string) => {
+      console.log("👤 Player ADDED → sessionId:", sessionId, "type:", serverPlayer.type, "microPos:", serverPlayer.microPos);
+      const container = this.createCharacter(serverPlayer.type, serverPlayer.microPos, serverPlayer.y);
+      container.setDepth(100);
+      this.playerEntities.set(sessionId, { container, serverState: serverPlayer });
+
+      if (sessionId === this.localSessionId) {
+        this.localPlayerReady = true;
+        console.log('✅ LOCAL PLAYER READY – microPos:', serverPlayer.microPos);
+        this.updateUI(serverPlayer);
       }
+    });
 
-      const playersMap = state.players;
-      
-      // Check if listeners already set up to avoid duplicates
-      if ((playersMap as any)._listenersSetup) return;
-      (playersMap as any)._listenersSetup = true;
+    playersMap.onRemove((serverPlayer: Player, sessionId: string) => {
+      console.log("❌ Player REMOVED → sessionId:", sessionId);
+      const entity = this.playerEntities.get(sessionId);
+      if (entity) {
+        entity.container.destroy();
+        this.playerEntities.delete(sessionId);
+      }
+    });
 
-      playersMap.onAdd((serverPlayer: Player, sessionId: string) => {
-        console.log("👤 Player ADDED → sessionId:", sessionId, "type:", serverPlayer.type, "microPos:", serverPlayer.microPos);
-        const container = this.createCharacter(serverPlayer.type, serverPlayer.microPos, serverPlayer.y);
-        container.setDepth(100);
-        this.playerEntities.set(sessionId, { container, serverState: serverPlayer });
+    playersMap.onChange((serverPlayer: Player, sessionId: string) => {
+      const entity = this.playerEntities.get(sessionId);
+      if (!entity) return;
+      console.log("🔄 Player CHANGED → sessionId:", sessionId, "microPos:", serverPlayer.microPos);
 
-        if (sessionId === this.localSessionId) {
-          this.localPlayerReady = true;
-          console.log('✅ LOCAL PLAYER READY – microPos:', serverPlayer.microPos);
-          this.updateUI(serverPlayer);
-        }
-      });
-
-      playersMap.onRemove((serverPlayer: Player, sessionId: string) => {
-        console.log("❌ Player REMOVED → sessionId:", sessionId);
-        const entity = this.playerEntities.get(sessionId);
-        if (entity) {
-          entity.container.destroy();
-          this.playerEntities.delete(sessionId);
-        }
-      });
-
-      playersMap.onChange((serverPlayer: Player, sessionId: string) => {
-        const entity = this.playerEntities.get(sessionId);
-        if (!entity) return;
-        console.log("🔄 Player CHANGED → sessionId:", sessionId, "microPos:", serverPlayer.microPos);
-
-        const newX = this.getMicroPosX(serverPlayer.microPos);
-        if (Math.abs(entity.container.x - newX) > 5) {
-          this.tweens.add({
-            targets: entity.container,
-            x: newX,
-            duration: 140,
-            ease: 'Cubic.easeOut'
-          });
-        }
-        entity.container.y = serverPlayer.y;
-        if (serverPlayer.isDead) entity.container.setAlpha(0);
-        if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
-      });
+      const newX = this.getMicroPosX(serverPlayer.microPos);
+      if (Math.abs(entity.container.x - newX) > 5) {
+        this.tweens.add({
+          targets: entity.container,
+          x: newX,
+          duration: 140,
+          ease: 'Cubic.easeOut'
+        });
+      }
+      entity.container.y = serverPlayer.y;
+      if (serverPlayer.isDead) entity.container.setAlpha(0);
+      if (sessionId === this.localSessionId) this.updateUI(serverPlayer);
     });
 
     // Message handlers can be set up immediately (don't need state)
@@ -254,13 +259,16 @@ export class MainScene extends Phaser.Scene {
   }
 
   createCharacter(type: Species, microPos: number, y: number): Phaser.GameObjects.Container {
+    console.log("🎨 Creating character - type:", type, "microPos:", microPos, "y:", y);
     let color, emoji;
     if (type === 'BUG') { color = 0x4caf50; emoji = '🐛'; }
     else if (type === 'MAN') { color = 0x2196f3; emoji = '🏃‍♂️'; }
     else { color = 0xf44336; emoji = '🧛‍♂️'; }
     const body = this.add.circle(0, 0, 24, color).setStrokeStyle(3, 0xffffff);
     const icon = this.add.text(0, 0, emoji, { fontSize: '30px' }).setOrigin(0.5);
-    return this.add.container(this.getMicroPosX(microPos), y, [body, icon]);
+    const x = this.getMicroPosX(microPos);
+    console.log("📍 Character position - x:", x, "y:", y);
+    return this.add.container(x, y, [body, icon]);
   }
 
   getMicroPosX(index: number): number { return index * MICRO_WIDTH + (MICRO_WIDTH / 2); }
@@ -373,9 +381,12 @@ export class MainScene extends Phaser.Scene {
     }
 
     const localEntity = this.playerEntities.get(this.localSessionId);
-    if (localEntity) {
+    if (localEntity && this.localPlayerReady) {
       const cam = this.cameras.main;
       cam.centerOn(localEntity.container.x, localEntity.container.y - (cam.height / cam.zoom) * 0.25);
+    } else if (!this.localPlayerReady && this.room) {
+      // If no local player yet, keep camera at starting position
+      this.cameras.main.centerOn(270, 0);
     }
 
     this.drawRoad();
