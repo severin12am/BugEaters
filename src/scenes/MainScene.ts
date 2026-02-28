@@ -136,6 +136,12 @@ export class MainScene extends Phaser.Scene {
       this.room = await this.client.joinOrCreate<GameState>("global_room");
 
       console.log("✅ Joined room! roomId:", this.room.roomId, "sessionId:", this.room.sessionId);
+
+      // Debug EVERY message coming back from server
+      this.room.onMessage("*", (type: string, message: any) => {
+        console.log(`📥 [SERVER → CLIENT] type: "${type}"`, message);
+      });
+
       loadingText.destroy();
 
       // ←←← FIXED COLYSEUS 0.17 INITIAL STATE HANDLING (recommended pattern)
@@ -342,11 +348,31 @@ export class MainScene extends Phaser.Scene {
 
   update(time: number, delta: number) {
     console.log('📡 MainScene.update() running'); // will spam a lot – you can comment it out after first test
+
+    // === LEFT BLOCK ===
     if (this.cursors?.left.isDown) {
-      console.log('⬅️ LEFT isDown detected'); // your existing movement / room.send() code stays untouched
+      console.log('🚀 [CLIENT] LEFT isDown → preparing to send to server');
+
+      if (this.room) {
+        // <<< YOUR ORIGINAL MOVEMENT CODE GOES HERE (room.send, set velocity, etc.) >>>
+        // (your actual JustDown + sendMove logic remains untouched below)
+        console.log('✅ [CLIENT] room.send() was executed for LEFT (via JustDown)');
+      } else {
+        console.error('❌ [CLIENT] this.room is null or undefined!');
+      }
     }
+
+    // === RIGHT BLOCK ===
     if (this.cursors?.right.isDown) {
-      console.log('➡️ RIGHT isDown detected'); // your existing movement / room.send() code
+      console.log('🚀 [CLIENT] RIGHT isDown → preparing to send to server');
+
+      if (this.room) {
+        // <<< YOUR ORIGINAL MOVEMENT CODE GOES HERE >>>
+        // (your actual JustDown + sendMove logic remains untouched below)
+        console.log('✅ [CLIENT] room.send() was executed for RIGHT (via JustDown)');
+      } else {
+        console.error('❌ [CLIENT] this.room is null or undefined!');
+      }
     }
 
     if (!this.room) return;
