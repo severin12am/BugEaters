@@ -265,7 +265,7 @@ export class MainScene extends Phaser.Scene {
     return { name: 'KLAUS', speed: ZONE_SPEEDS.KLAUS, type: 'KLAUS' };
   }
 
-  updateUI(serverPlayer: any) {
+  updateUI(serverPlayer: Player) {
     const info = this.getZoneInfo(serverPlayer.microPos);
     this.events.emit('zone_changed', info.name, info.speed);
   }
