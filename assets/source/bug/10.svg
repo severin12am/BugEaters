@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="787" viewBox="0 0 620 787">
+  <!-- Bug walk frame - authored from Unity таракан ref. White/gray line+fill. Transparent bg. -->
+  <!-- frame 10 / contact=False bob=-2.1 -->
+  <g>
+  <polyline points="255.0,332.9 253.4,370.9 251.5,758.0" fill="none" stroke="#ffffff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="253.4,370.9 251.5,758.0" fill="none" stroke="#888888" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="251.5,758.0 244.5,769.0" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+  <polyline points="270.0,402.9 279.0,440.9 308.7,511.6" fill="none" stroke="#ffffff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="279.0,440.9 308.7,511.6" fill="none" stroke="#888888" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="308.7,511.6 301.7,522.6" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+  <polyline points="285.0,477.9 286.7,515.9 292.1,567.9" fill="none" stroke="#ffffff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="286.7,515.9 292.1,567.9" fill="none" stroke="#888888" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="292.1,567.9 285.1,578.9" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+  <polyline points="335.0,337.9 332.2,375.9 338.6,758.0" fill="none" stroke="#ffffff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="332.2,375.9 338.6,758.0" fill="none" stroke="#888888" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="338.6,758.0 331.6,769.0" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+  <polyline points="352.0,407.9 354.8,445.9 354.4,483.9" fill="none" stroke="#ffffff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="354.8,445.9 354.4,483.9" fill="none" stroke="#888888" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="354.4,483.9 347.4,494.9" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+  <polyline points="368.0,472.9 376.5,510.9 375.3,566.4" fill="none" stroke="#ffffff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="376.5,510.9 375.3,566.4" fill="none" stroke="#888888" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="375.3,566.4 368.3,577.4" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+  <ellipse cx="310.0" cy="392.94275161697635" rx="98" ry="185" fill="#ffffff" stroke="#888888" stroke-width="9"/>
+  <ellipse cx="310.0" cy="372.94275161697635" rx="72" ry="120" fill="none" stroke="#888888" stroke-width="7"/>
+  <ellipse cx="303.4506496334475" cy="217.32557710206925" rx="72" ry="58" fill="#ffffff" stroke="#888888" stroke-width="9" transform="rotate(-4.9120127749144 303.4506496334475 217.32557710206925)"/>
+  <ellipse cx="281.4506496334475" cy="209.32557710206925" rx="16" ry="22" fill="#888888" stroke="none"/>
+  <ellipse cx="325.4506496334475" cy="209.32557710206925" rx="16" ry="22" fill="#888888" stroke="none"/>
+  <path d="M 265.4506496334475 199.32557710206925 Q 303.4506496334475 175.32557710206925 341.4506496334475 199.32557710206925" fill="none" stroke="#ffffff" stroke-width="5"/>
+  <polyline points="251.45064963344748,187.32557710206925 235.45064963344748,162.32557710206925 255.45064963344748,179.32557710206925" fill="#ffffff" stroke="#888888" stroke-width="5"/>
+  <polyline points="355.4506496334475,187.32557710206925 371.4506496334475,162.32557710206925 351.4506496334475,179.32557710206925" fill="#ffffff" stroke="#888888" stroke-width="5"/>
+  <polyline points="302.0,169.32557710206925 296.0,99.32557710206925 294.94657697249033,30.218294466497113" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round"/>
+  <polyline points="296.0,99.32557710206925 294.94657697249033,30.218294466497113" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+  <polyline points="328.0,182.32557710206925 356.0,127.32557710206925 391.6715661338309,79.09658356997463" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  </g>
+</svg>

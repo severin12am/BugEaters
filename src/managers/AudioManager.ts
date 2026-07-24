@@ -1,0 +1,129 @@
+import Phaser from 'phaser';
+import { AUDIO_KEYS, PHRASE_AUDIO_KEYS, STEP_AUDIO_KEY } from '../config/audioAssets';
+import { LIGHTING_TUNING } from '../config/lighting';
+import { TUNING } from '../config/tuning';
+import { CharacterType, ux } from '../utils/constants';
+import { sampleLampLight, type LampPoint } from '../utils/lampLight';
+
+/**
+ * Unity-style race audio: random ambient phrases, footstep one-shots, lamp hum loop.
+ */
+export class AudioManager {
+  private phraseTimerMs = 0;
+  private lampSound: Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound | null = null;
+  private active = false;
+  private muted = false;
+
+  constructor(private readonly scene: Phaser.Scene) {
+    this.scene.sound.pauseOnBlur = false;
+  }
+
+  /** Starts phrase scheduling and prepares the lamp loop. */
+  startRace(): void {
+    this.active = true;
+    this.phraseTimerMs = TUNING.audio.phrases.firstDelaySec * 1000;
+    this.ensureLampLoop();
+  }
+
+  stopRace(): void {
+    this.active = false;
+    this.lampSound?.stop();
+    // `lampSound` can be replaced during a Phaser scene restart. Stop every
+    // instance by key so the buzz never survives death/end-screen teardown.
+    this.scene.sound.stopByKey(AUDIO_KEYS.lampBuzz);
+  }
+
+  destroy(): void {
+    this.stopRace();
+    this.lampSound?.destroy();
+    this.lampSound = null;
+  }
+
+  /** Footstep one-shot synced to the walk animation (Unity Mover.Sound at volume 0.1). */
+  playFootstep(character: CharacterType): void {
+    if (!this.canPlaySfx()) {
+      return;
+    }
+
+    const key = STEP_AUDIO_KEY[character];
+    if (!this.scene.cache.audio.exists(key)) {
+      return;
+    }
+
+    this.scene.sound.play(key, {
+      volume: TUNING.audio.steps.volume,
+      detune: Phaser.Math.Between(-120, 120),
+    });
+  }
+
+  /** Spatial lamp hum — volume follows nearest lamp brightness. */
+  updateLampHum(playerX: number, playerFeetY: number, lamps: readonly LampPoint[]): void {
+    if (!this.canPlaySfx()) {
+      return;
+    }
+
+    const loop = this.ensureLampLoop();
+    if (!loop) {
+      return;
+    }
+
+    const radius = ux(LIGHTING_TUNING.lampInfluenceRadius);
+    const { brightness } = sampleLampLight(playerX, playerFeetY, lamps, radius);
+    const targetVolume = TUNING.audio.lamp.volume * brightness;
+
+    if (targetVolume <= 0.01) {
+      if (loop.isPlaying) {
+        loop.stop();
+      }
+      return;
+    }
+
+    loop.setVolume(targetVolume);
+    if (!loop.isPlaying) {
+      loop.play();
+    }
+  }
+
+  tick(deltaMs: number): void {
+    if (!this.active || !this.canPlaySfx()) {
+      return;
+    }
+
+    this.phraseTimerMs -= deltaMs;
+    if (this.phraseTimerMs > 0) {
+      return;
+    }
+
+    this.playRandomPhrase();
+    this.phraseTimerMs = TUNING.audio.phrases.intervalSec * 1000;
+  }
+
+  private playRandomPhrase(): void {
+    const loaded = PHRASE_AUDIO_KEYS.filter((key) => this.scene.cache.audio.exists(key));
+    if (loaded.length === 0) {
+      return;
+    }
+
+    const key = Phaser.Utils.Array.GetRandom(loaded);
+    this.scene.sound.play(key, { volume: TUNING.audio.phrases.volume });
+  }
+
+  private ensureLampLoop(): Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound | null {
+    if (this.lampSound) {
+      return this.lampSound;
+    }
+    if (!this.scene.cache.audio.exists(AUDIO_KEYS.lampBuzz)) {
+      return null;
+    }
+
+    this.lampSound = this.scene.sound.add(AUDIO_KEYS.lampBuzz, {
+      loop: true,
+      volume: 0,
+    }) as Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound;
+    return this.lampSound;
+  }
+
+  private canPlaySfx(): boolean {
+    return !this.muted && !this.scene.sound.locked;
+  }
+}

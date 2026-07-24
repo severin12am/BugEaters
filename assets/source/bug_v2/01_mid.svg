@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="787" viewBox="0 0 620 787">
+  <!-- Bug v2 MID frame 01 — Unity-weight, 2–3 section legs. Raster: experiments/bug_v2/01_mid.png -->
+  <text x="20" y="40" fill="#888" font-size="18">See generate_bug_v2_frame01_mid.py for geometry</text>
+</svg>

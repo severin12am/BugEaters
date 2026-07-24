@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Bug walk — large preview</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #111;
+        color: #eee;
+        font-family: ui-monospace, Consolas, monospace;
+      }
+      main {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      h1 {
+        font-size: 20px;
+        font-weight: 600;
+        margin: 0 0 8px;
+      }
+      p {
+        margin: 0 0 20px;
+        color: #aaa;
+        font-size: 13px;
+      }
+      .stage {
+        background: #1c1c1c;
+        border: 1px solid #333;
+        padding: 24px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 70vh;
+      }
+      .stage img {
+        image-rendering: auto;
+        max-height: 75vh;
+        width: auto;
+        background: #1c1c1c;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+      }
+      a {
+        color: #9cf;
+      }
+      button {
+        background: #fff;
+        color: #000;
+        border: 0;
+        padding: 10px 14px;
+        font: inherit;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: transparent;
+        color: #eee;
+        border: 1px solid #666;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Bug walk — large preview</h1>
+      <p>Normalized Unity cycle · open this file in a browser window and zoom</p>
+      <div class="stage">
+        <img id="frame" src="normalized_walk.gif" alt="Bug walk cycle" />
+      </div>
+      <div class="row">
+        <button type="button" data-src="normalized_walk.gif">Walk GIF</button>
+        <button type="button" class="secondary" data-src="normalized_COMPARE.gif">
+          Before / after
+        </button>
+        <button type="button" class="secondary" data-src="normalized_STRIP.png">
+          Full strip
+        </button>
+        <a href="http://localhost:4173/">Open game (Solo practice)</a>
+      </div>
+    </main>
+    <script>
+      const img = document.getElementById('frame');
+      for (const btn of document.querySelectorAll('button[data-src]')) {
+        btn.addEventListener('click', () => {
+          img.src = btn.dataset.src + '?t=' + Date.now();
+        });
+      }
+    </script>
+  </body>
+</html>

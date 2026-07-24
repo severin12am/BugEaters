@@ -1,0 +1,13 @@
+services:
+  race-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.race-server
+    environment:
+      PORT: 2567
+      WEB_ORIGIN: ${WEB_ORIGIN}
+      SUPABASE_URL: ${SUPABASE_URL}
+      RACE_TOKEN_SECRET: ${RACE_TOKEN_SECRET}
+    ports:
+      - "2567:2567"
+    restart: unless-stopped

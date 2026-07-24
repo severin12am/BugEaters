@@ -1,0 +1,32 @@
+Upload: guide_frame_01_purple_anchors.png  (or the _nolabel version)
+
+────────────────────────────────────────
+COPY THIS PROMPT INTO CHATGPT IMAGE:
+────────────────────────────────────────
+
+Use this exact bug as the master reference. Do not redesign it.
+
+STYLE (lock):
+- Top-down orthographic beetle/cockroach
+- Pure white outlines, solid black fill, transparent or pure black background
+- Medium line weight, clean vector look
+- Same body proportions, same center seam, same 2–3 segment legs
+- No shading, no grey, no extra detail lines inside the abdomen
+
+PURPLE GUIDE LINES (CRITICAL):
+- There are TWO horizontal purple lines on the reference
+- TOP purple line = top of the HEAD (not the antenna tips)
+- BOTTOM purple line = tip of the BUTT / abdomen
+- In EVERY generated frame, the head-top and butt-tip must sit EXACTLY on these same two purple lines
+- Do not move, scale, or bounce the body between frames
+- Only the legs (and tiny antenna wiggle if needed) may change
+- Keep the purple guide lines visible in the output so alignment can be checked
+
+TASK:
+Generate an 8-frame walk cycle sprite sheet of this SAME bug.
+Layout: 2 rows × 4 columns (frames 1–4 top, 5–8 bottom), equal cell sizes.
+Frame 1 should match this reference pose as closely as possible.
+Frames 2–8: natural insect tripod walk, legs alternating, body locked to the purple lines.
+No text, no numbers, no watermarks.
+
+If anything drifts off the purple lines, regenerate that frame until head-top and butt-tip are pinned again.

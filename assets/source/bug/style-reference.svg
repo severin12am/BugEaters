@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="787" viewBox="0 0 620 787" >
+  <!-- 
+    Style reference for Bug walk-cycle authoring (BugEaters).
+    Canvas: 620x787 (matches CHARACTER_MAX_ASPECT in code).
+    All frames MUST share this viewBox and a common feet baseline (~y=755-770).
+    Palette: fill="#ffffff" stroke="#888888" stroke-width ~6-14 for small size readability.
+    Side/angled view of stylized cockroach/beetle runner.
+    Feet contact on frames 01 and 06 (for footstep sync).
+    No background. Consistent CoM x~310, minimal horizontal drift.
+    Source: traced/refined from extracted Unity таракан*.png frames in assets/reference/unity/bug/
+  -->
+  <desc>Bug walk cycle style ref - 10 frames fast scuttle insect</desc>
+</svg>

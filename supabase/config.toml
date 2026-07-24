@@ -1,0 +1,18 @@
+# Supabase CLI project config. Run `supabase link --project-ref <ref>` then
+# `supabase db push` and `supabase functions deploy <name>`.
+project_id = "bugeaters"
+
+[functions.telegram-auth]
+verify_jwt = false
+
+[functions.join-room]
+verify_jwt = true
+
+[functions.referee]
+verify_jwt = true
+
+[functions.race-ticket]
+verify_jwt = true
+
+[functions.race-results]
+verify_jwt = false
