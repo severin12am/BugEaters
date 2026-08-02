@@ -1,5 +1,9 @@
 node_modules
 dist
+server/dist
+.colyseus-cloud.json
+.wrangler
+.dev.vars
 .DS_Store
 *.log
 .env

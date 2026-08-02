@@ -114,13 +114,13 @@ Nine sub-lanes. Three species. Two deadly edges.
 
 :::diagram controls
 
-Sixty seconds. Furthest progress wins. Death ends your run.
+Sixty seconds. Only survivors move on. Death ends your run.
 
 ### On the asphalt
 
 :::diagram obstacles
 
-**Trash** slows you (auto-jump on contact). **Puddles** kick a short boost when you leave them. **Open manholes** kill; closed lids are safe.
+**Trash** stops you cold — change lane to go around (you cannot jump a bin). **Puddles** kick a short boost when you leave them. **Open manholes** kill; closed lids are safe.
 
 ### Other runners
 

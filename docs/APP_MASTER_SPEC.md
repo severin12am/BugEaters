@@ -1,12 +1,14 @@
 # BugEaters — App Master Specification
 
-**Status:** Canonical product + implementation reference (June 2026)  
+**Status:** Canonical product + implementation reference (updated August 2026)  
 **Audience:** Product owner, designers, client engineers, backend, blockchain  
 
 > **This is the single source of truth.**  
 > Read this file first. All other docs are **children** — they add detail for a role or era; they do not override §2–6 here.
 >
 > **In-game player encyclopedia:** [`content/encyclopedia.md`](../content/encyclopedia.md) — the only file for player-facing copy in the Telegram UI. Ability **names** are pulled from `src/config/abilities.ts` at runtime; ability **effect text** lives in the `### ability:<id>` blocks in that file. Do not duplicate player explanations elsewhere.
+>
+> **Live deploy / phone test:** [`DEPLOY_NOW.md`](./DEPLOY_NOW.md) · [`PHONE_TEST_NOW.md`](./PHONE_TEST_NOW.md) — URLs and ops steps; product law stays in this file.
 
 ---
 
@@ -32,7 +34,15 @@ Tier 3 — CODE (ground truth for what is shipped)
 ├── src/tournament/                       … week context, config defaults, mocks
 ├── src/scenes/                           … Phaser scenes & navigation
 ├── src/ui/                               … Mono design system
-└── supabase/                             … auth, matchmaking, race (no tournament tables yet)
+├── server/                               … Colyseus authoritative race simulation
+└── supabase/                             … auth, matchmaking, race / tournament
+
+Ops (not product law — defer to this file for *what*; these for *how/where*)
+├── docs/DEPLOY_NOW.md                    … Fly + Cloudflare Pages deploy steps
+├── docs/PHONE_TEST_NOW.md                … current BotFather / phone URL
+├── docs/AUTHORITATIVE_RACE_SERVER.md     … race-server env / Docker
+├── fly.toml · Dockerfile.race-server     … race host config
+└── ecosystem.config.cjs                  … Colyseus Cloud PM2 entry (optional alt host)
 
 Parallel tracks (not under tournament canon)
 ├── ios-handoff/                          … native iOS port brief
@@ -53,9 +63,10 @@ Parallel tracks (not under tournament canon)
 | Role | Path |
 |------|------|
 | Product owner | **§2–6** (fixed / open / deferred) → resolve **§5** before locking v1 |
-| Backend engineer | This file **§7–11** → `TOURNAMENT_SYSTEM_SPEC.md` |
+| Backend engineer | This file **§7–11** → `TOURNAMENT_SYSTEM_SPEC.md` · race host **§3 / §11b** |
 | Blockchain engineer | This file **§8** → `TON_CRYPTO_IMPLEMENTATION_PLAN.md` |
 | Client / UI | This file **§9–10** → `TOURNAMENT_UI_BRIEF.md` → `src/scenes/` |
+| Deploy / phone test | **§11b** → `DEPLOY_NOW.md` → `PHONE_TEST_NOW.md` |
 | New contributor pitch | **§16** one-paragraph → `TON_WEEKLY_TOURNAMENT_MODEL.md` |
 
 ---
@@ -78,7 +89,14 @@ Parallel tracks (not under tournament canon)
 
 BugEaters is a **weekly global tournament** delivered as a **Telegram Mini App**: a Phaser 3 lane-runner where real humans race on a near-black road with Bug / Human / Klaus roles, pass-gated advancement through the week, and a **single worldwide Sunday champion** who earns **Monday in-race billboard** rights (transferable to sponsors).
 
-**Stack today:** Phaser 3.87 · Vite 6 · TypeScript · Supabase (auth, matchmaking, realtime race) · TON Connect planned, not wired.
+**Stack today:** Phaser 3.87 · Vite 6 · TypeScript · Supabase (auth, matchmaking, tournament) · **Colyseus authoritative race server** on **Fly.io** · Mini App static host on **Cloudflare Pages** · TON Connect planned, not wired.
+
+**Live playtest URLs (Aug 2026):**
+| Role | URL |
+|------|-----|
+| Telegram Mini App (BotFather Web App) | `https://bugeaters-cey.pages.dev` |
+| Authoritative race server (HTTP health) | `https://bugeaters-race.fly.dev/healthz` |
+| Authoritative race server (WebSocket) | `wss://bugeaters-race.fly.dev` |
 
 **Visual identity (fixed):** Mono black/white UI chrome; road `#080808`; blood red `#cc0000` for death only; Space Mono + Inter typography in menus.
 
@@ -129,6 +147,10 @@ Decisions you have already made (from stakeholder Q&A). These are not “maybe�
 | Pass tradability | Passes can be **sold/bought** until burned (exact marketplace mechanics **deferred**) |
 | Build crypto in planning phase | Chain was **planning-only**; client has **mocks** for wallet/burn/pass |
 | Saturday → Sunday cap | **Resolved:** structural cap via max Saturday rooms — not a post-hoc “select 6 from many winners” |
+| Multiplayer fairness | **Dedicated authoritative race server** (Colyseus) owns the 60s sim; clients send inputs and render snapshots. Supabase keeps auth / lobby / tournament durability |
+| Race server host | **Fly.io** app `bugeaters-race` (Docker via `Dockerfile.race-server` + `fly.toml`). Colyseus Cloud remains an optional alternate host (`defineServer` + `ecosystem.config.cjs`) |
+| Mini App static host | **Cloudflare Pages** project `bugeaters` → `https://bugeaters-cey.pages.dev` (BotFather Web App URL) |
+| Local tunnels (ngrok / trycloudflare) | **Dev-only / obsolete for phone playtests** once Pages + Fly are live |
 
 ---
 
@@ -335,6 +357,19 @@ Monday 00:00 UTC ─────────────────────
 - Wallet link + forfeit cron
 - Champion billboard storage + moderation queue
 
+### 11b. Hosting & live playtest (August 2026)
+
+| Piece | Provider | Notes |
+|-------|----------|-------|
+| Mini App (`dist/`) | Cloudflare Pages | Free tier; set BotFather Web App / menu button to production URL |
+| Authoritative race | Fly.io | Always-on small VM; `wss://`; playtest may keep `RACE_DEV_MODE=1` for `/dev/ticket` until Edge `race-ticket` is wired |
+| Auth / lobby / passes | Supabase | Unchanged project |
+| Secrets | Fly secrets + Pages build env | `RACE_TOKEN_SECRET` must match Supabase when leaving dev tickets |
+
+**Player-facing race rules (copy):** only **survivors** move on in the tournament narrative; trash **stops** the runner (change lane to go around) on the authoritative path — see encyclopedia + onboarding.
+
+**Ops runbooks:** [`DEPLOY_NOW.md`](./DEPLOY_NOW.md), [`PHONE_TEST_NOW.md`](./PHONE_TEST_NOW.md), [`AUTHORITATIVE_RACE_SERVER.md`](./AUTHORITATIVE_RACE_SERVER.md).
+
 ---
 
 ## 12. Scene flow (implemented)
@@ -360,7 +395,7 @@ BootScene → WeekHubScene
 
 ---
 
-## 14. Readiness snapshot (June 2026)
+## 14. Readiness snapshot (August 2026)
 
 | Area | Verdict |
 |------|---------|
@@ -368,9 +403,11 @@ BootScene → WeekHubScene
 | Open decisions (§5) | **Not ready** for final backend/chain without owner input |
 | Client tournament UI shell | **Demo-ready** with mocks |
 | Client tournament game mode | **Partial** — NPCs off, lobby solo fallback remains |
-| Backend tournament | **Not started** |
+| Authoritative race server | **Live on Fly** — playtest path (`/dev/ticket`); full Supabase ticket/results wiring still to harden |
+| Mini App host | **Live on Cloudflare Pages** — phone via BotFather URL |
+| Backend tournament | **Partial** — schema/RPCs exist; not all production gates |
 | TON / NFT | **Mock only** (acceptable per scope) |
-| Production launch | **No** — §5 + backend + wiring + billboards |
+| Production launch | **No** — §5 + tournament backend + billboards; playtest hosting **yes** |
 
 ---
 
@@ -388,6 +425,9 @@ Full tree: see **Documentation hierarchy** at top. Quick reference:
 | `GAME_OVERVIEW.md` | 1 | Race gameplay & Phaser architecture (**sync needed**) |
 | `VISION_READINESS.md` | 2 | Point-in-time readiness audit |
 | `TON_CRYPTO_DECISION_QUESTIONNAIRE.md` | 2 | Historical Q&A — use §3–6 here instead |
+| `DEPLOY_NOW.md` | Ops | Fly + Pages deploy steps |
+| `PHONE_TEST_NOW.md` | Ops | Current BotFather / phone URL |
+| `AUTHORITATIVE_RACE_SERVER.md` | Ops | Race-server env / Docker |
 
 ---
 
@@ -397,4 +437,4 @@ BugEaters is a weekly Telegram lane-runner tournament. **Monday is free and Web2
 
 ---
 
-*Update §5 when you resolve open items. Update §10–11 when implementation catches up.*
+*Update §5 when you resolve open items. Update §10–11 when implementation catches up. Update §1 / §11b live URLs when hosts change.*

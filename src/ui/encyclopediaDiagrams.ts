@@ -387,7 +387,7 @@ function drawObstacles(scene: Phaser.Scene, width: number): DiagramResult {
   const height = ux(128);
   const { root, inner, pad } = frame(scene, width, height);
   const items = [
-    { title: 'TRASH', note: 'slows · auto-jump', draw: 'trash' as const },
+    { title: 'TRASH', note: 'stops you · change lane', draw: 'trash' as const },
     { title: 'PUDDLE', note: 'exit = boost', draw: 'puddle' as const },
     { title: 'MANHOLE', note: 'open = death', draw: 'hole' as const },
   ];

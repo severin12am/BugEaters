@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:race-server": "tsc -p server/tsconfig.build.json",
     "preview": "vite preview",
     "race-server": "tsx server/src/index.ts",
     "race-server:check": "tsc -p server/tsconfig.json",
-    "race-server:test": "tsx server/test/simulation.test.ts"
+    "race-server:test": "tsx server/test/simulation.test.ts",
+    "deploy:pages": "npm run build && wrangler pages deploy dist --project-name bugeaters"
   },
   "dependencies": {
     "@colyseus/schema": "^4.0.27",
@@ -22,11 +24,13 @@
     "phaser": "^3.87.0"
   },
   "devDependencies": {
+    "@colyseus/cloud": "^1.0.12",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "tsx": "^4.23.1",
     "typescript": "^5.7.2",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "wrangler": "^4.118.0"
   }
 }

@@ -1,0 +1,17 @@
+node_modules
+.git
+.tools
+.vscode
+dist
+server/dist
+old_unity_game
+itch-download
+ios-handoff
+BUG_WALK_REVIEW
+BUG_CURRENT_FRAMES
+ANIM_TOOL_INPUT
+assets/reference
+*.md
+.env*
+!.env.example
+!server/.env.example

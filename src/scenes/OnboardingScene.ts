@@ -45,11 +45,11 @@ const STEPS: OnboardingStep[] = [
   {
     eyebrow: 'Controls',
     title: 'How to race',
-    body: 'Sixty seconds. Furthest progress wins. Dying ends your run.',
+    body: 'Sixty seconds. Only survivors move on — dying ends your run.',
     bullets: [
       'Swipe or tap left / right to change lane',
       'Swipe up to jump',
-      'Trash slows you · puddles boost · open manholes kill',
+      'Trash stops you (change lane) · puddles boost · open manholes kill',
     ],
   },
   {
