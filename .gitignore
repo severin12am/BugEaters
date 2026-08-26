@@ -13,3 +13,4 @@ server/node_modules
 *.pem
 *.key
 .tools/
+scripts/.playtest-artifacts/

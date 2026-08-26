@@ -17,6 +17,13 @@ export const isRaceServerConfigured = raceServerUrl.length > 0;
 export const isRaceDevMode =
   raceDevModeRaw === '1' || raceDevModeRaw === 'true' || raceDevModeRaw === 'yes';
 
+/**
+ * Shared playtest lobby. POST /dev/ticket with this id so two phones meet.
+ * The ticket's `claims.roomId` is the Colyseus room for that wave — join with
+ * that, not this lobby id, or rematch can land in a leftover live race.
+ */
+export const PLAYTEST_LOBBY_ROOM_ID = 'local-practice';
+
 /** Converts a ws(s) race-server URL into the matching http(s) base for REST. */
 export function raceServerHttpBase(wsUrl = RACE_SERVER_URL): string {
   return wsUrl.replace(/^ws:/u, 'http:').replace(/^wss:/u, 'https:').replace(/\/$/u, '');

@@ -93,12 +93,21 @@ export class InputPredictor {
 /**
  * Applies one input to a predicted state using the SAME rules as the server's
  * movement system. Keep this in sync with server/src/domain/systems/movementSystem.ts.
+ *
+ * Divider / Opened Borders gating is done by GameScene before send — we only
+ * predict moves that were actually sent, so we always apply them here.
  */
 function applyInput(state: PredictedSelf, input: PlayerInput, raceMs: number): void {
   switch (input.type) {
     case 'move': {
       const delta = input.direction === 'left' ? -1 : 1;
-      state.lane = Math.max(0, Math.min(CLIENT_RACE_CONFIG.laneCount - 1, state.lane + delta));
+      const target = state.lane + delta;
+      // Off-road is fatal on the server; keep prediction in-bounds so we don't
+      // desync the local lane while waiting for the death snapshot.
+      if (target < 0 || target > CLIENT_RACE_CONFIG.laneCount - 1) {
+        break;
+      }
+      state.lane = target;
       state.x = laneCenterX(state.lane);
       break;
     }

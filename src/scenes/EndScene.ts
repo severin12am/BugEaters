@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CHARACTER_LABELS, GAME_WIDTH, ux } from '../utils/constants';
+import { CHARACTER_LABELS, CharacterType, GAME_WIDTH, ux } from '../utils/constants';
 import { fontSize, getContentTopY, getMenuBottomY } from '../utils/layout';
 import { gameText } from '../utils/display';
 import type { RoomSession } from '../net/RoomSession';
@@ -22,12 +22,19 @@ import {
   fetchWeekState,
 } from '../tournament/tournamentApi';
 import { REGISTRY_KEYS, type AuthLocalRaceOptions } from './BootScene';
+import {
+  isRaceDevMode,
+  isRaceServerConfigured,
+  PLAYTEST_LOBBY_ROOM_ID,
+  raceServerHttpBase,
+} from '../net/authoritative/env';
 
 /**
  * Post-race summary with tournament advancement framing.
  */
 export class EndScene extends Phaser.Scene {
   private outcome: RaceOutcome | null = null;
+  private practiceAgainBusy = false;
 
   constructor() {
     super({ key: 'EndScene' });
@@ -85,7 +92,7 @@ export class EndScene extends Phaser.Scene {
       titleColor = MONO_CSS.blood;
       subtitle = finished
         ? 'You died before the finish line.'
-        : 'Blood on the track.';
+        : 'You were eliminated.';
       advancement = week.isSundayFinale
         ? 'Finale run complete.'
         : 'Out of the tournament — see you next Monday.';
@@ -151,24 +158,7 @@ export class EndScene extends Phaser.Scene {
     if (soloPractice) {
       const again = createMonoButton(this, cx, againY, 'Practice again', 'primary', panelW);
       bindButtonClick(again, () => {
-        const prev = this.registry.get(REGISTRY_KEYS.authLocalRace) as AuthLocalRaceOptions | null;
-        this.registry.set(REGISTRY_KEYS.soloPractice, true);
-        this.registry.set(REGISTRY_KEYS.authStandings, null);
-        if (prev) {
-          this.registry.set(REGISTRY_KEYS.authLocalRace, {
-            ...prev,
-            userId:
-              typeof crypto !== 'undefined' && 'randomUUID' in crypto
-                ? `dev-${crypto.randomUUID()}`
-                : `dev-${Date.now()}`,
-            // Generous countdown so both tabs can click "Practice again" and land
-            // in the same fresh server wave (the server reuses a wave only while
-            // it is still counting down).
-            startsAtMs: Date.now() + 9_000,
-            globalSubLane: Math.floor(Math.random() * 9),
-          } satisfies AuthLocalRaceOptions);
-        }
-        this.scene.start('GameScene');
+        void this.practiceAgain();
       });
     } else if (showRaceAgain) {
       const again = createMonoButton(this, cx, againY, 'Race again', 'primary', panelW);
@@ -185,8 +175,89 @@ export class EndScene extends Phaser.Scene {
     const hub = createMonoButton(this, cx, hubY, 'Week hub', 'secondary', panelW);
     bindButtonClick(hub, () => {
       cleanup();
-      this.scene.start('WeekHubScene');
+      // Prefer playtest menu when that is how the race was started.
+      if (soloPractice) {
+        this.scene.start('DevSessionScene');
+      } else {
+        this.scene.start('WeekHubScene');
+      }
     });
+  }
+
+  /**
+   * Mint a fresh /dev/ticket against the playtest lobby. Always use the lobby
+   * id (not the previous wave's Colyseus room) so both phones can meet on a
+   * new 15s countdown instead of rejoining a leftover live race.
+   */
+  private async practiceAgain(): Promise<void> {
+    if (this.practiceAgainBusy) {
+      return;
+    }
+    this.practiceAgainBusy = true;
+    this.registry.set(REGISTRY_KEYS.authStandings, null);
+    this.registry.set(REGISTRY_KEYS.soloPractice, true);
+
+    const prev = this.registry.get(REGISTRY_KEYS.authLocalRace) as AuthLocalRaceOptions | null;
+    if (!prev || !isRaceServerConfigured || !isRaceDevMode) {
+      this.registry.set(REGISTRY_KEYS.authLocalRace, null);
+      this.scene.start('GameScene');
+      return;
+    }
+
+    const userId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? `dev-${crypto.randomUUID()}`
+        : `dev-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
+
+    try {
+      const response = await fetch(`${raceServerHttpBase()}/dev/ticket`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId: PLAYTEST_LOBBY_ROOM_ID,
+          userId,
+          maxPlayers: prev.maxPlayers ?? 6,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      const data = (await response.json()) as {
+        token: string;
+        claims: {
+          roomId: string;
+          userId: string;
+          role: 'bug' | 'human' | 'klaus';
+          globalSubLane: number;
+          startsAtMs: number;
+          seed: number;
+          maxPlayers: number;
+        };
+      };
+      const character =
+        data.claims.role === 'bug'
+          ? CharacterType.Bug
+          : data.claims.role === 'klaus'
+            ? CharacterType.Klaus
+            : CharacterType.Human;
+      this.registry.set(REGISTRY_KEYS.selectedCharacter, character);
+      this.registry.set(REGISTRY_KEYS.authLocalRace, {
+        roomId: data.claims.roomId || PLAYTEST_LOBBY_ROOM_ID,
+        userId: data.claims.userId,
+        role: data.claims.role,
+        globalSubLane: data.claims.globalSubLane,
+        startsAtMs: data.claims.startsAtMs,
+        seed: data.claims.seed,
+        maxPlayers: data.claims.maxPlayers ?? 6,
+        token: data.token,
+      } satisfies AuthLocalRaceOptions);
+      this.scene.start('GameScene');
+    } catch (error) {
+      console.warn('[end] practice again ticket failed', error);
+      this.practiceAgainBusy = false;
+      this.registry.set(REGISTRY_KEYS.authLocalRace, null);
+      this.scene.start('DevSessionScene');
+    }
   }
 
   /**

@@ -1,15 +1,13 @@
 /**
  * Snapshot builder — projects the authoritative WorldState into the flat,
  * network-friendly {@link SnapshotMessage} the client renders.
- *
- * This is a pure projection: it never mutates the world. Keeping it separate
- * from the simulation means we can change the wire format (e.g. add delta
- * compression) without touching gameplay code.
  */
 import type { WorldState } from '../domain/types.js';
+import { isSlowedByRival } from '../domain/systems/abilitySystem.js';
 import type { SnapshotMessage } from './protocol.js';
 
 export function buildSnapshot(world: WorldState, serverTimeMs: number): SnapshotMessage {
+  const raceMs = world.elapsedMs;
   return {
     serverTimeMs,
     startsAtMs: world.startsAtMs,
@@ -27,9 +25,16 @@ export function buildSnapshot(world: WorldState, serverTimeMs: number): Snapshot
       finishTimeMs: player.finishTimeMs,
       lastInputSeq: player.lastInputSeq,
       abilities: player.abilities,
-      sliding: world.elapsedMs < player.slideUntilMs,
-      stalled: player.stuck || world.elapsedMs < player.stallUntilMs,
-      boosted: world.elapsedMs < player.boostUntilMs,
+      sliding: raceMs < player.slideUntilMs,
+      stalled: player.stuck || raceMs < player.stallUntilMs,
+      boosted: raceMs < player.boostUntilMs,
+      eatProtected: raceMs < player.eatProtectedUntilMs,
+      blackrock: raceMs < player.blackrockUntilMs,
+      barriersOpen: raceMs < player.barriersOpenUntilMs,
+      flight: raceMs < player.flightUntilMs,
+      hellMode: raceMs < player.hellModeUntilMs,
+      slowed: isSlowedByRival(player, world, raceMs),
+      flashlight: raceMs < player.flashlightUntilMs,
     })),
     hazards: world.hazards.map((hazard) => ({
       id: hazard.id,
@@ -39,6 +44,7 @@ export function buildSnapshot(world: WorldState, serverTimeMs: number): Snapshot
       open: hazard.open,
       angle: hazard.angle,
       abilityId: hazard.abilityId,
+      resolvedBy: hazard.resolvedBy ? [...hazard.resolvedBy] : undefined,
     })),
     dividersOpen: world.dividersOpen,
   };

@@ -19,4 +19,4 @@ With `VITE_ALLOW_DEV_SESSION=true`, the app opens a **week + day picker**.
 ## On your phone
 
 1. Open your bot in Telegram → tap Play  
-2. On **Playtest** → **Solo practice** or **Local multiplayer race**
+2. On **Playtest** → **Testing**

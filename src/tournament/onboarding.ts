@@ -5,7 +5,7 @@
  * or forced with `?onboarding=1`.
  */
 
-const STORAGE_KEY = 'bugeaters.onboarding.v1';
+const STORAGE_KEY = 'bugeaters.onboarding.v2';
 
 export function hasCompletedOnboarding(): boolean {
   if (typeof localStorage === 'undefined') {

@@ -2,19 +2,47 @@
 
 > **Single source of truth for in-game player copy.**  
 > The Encyclopedia UI imports this file at build time. Ability **names** come from `src/config/abilities.ts`; effect text for each ability is the `### ability:<id>` block below.  
-> Diagrams use `:::diagram <id>` fences rendered as stylized mono schemes in the Guide.
+> Photos use `:::shot <id> | Title` (real race screenshots in `public/assets/guide/`).  
+> Diagrams use `:::diagram <id>` fences rendered as stylized mono schemes in the Guide.  
+> Chapter headers: `## id | Title | Short blurb` — the blurb is the index-card line (must stay short).
 
 ---
 
-## overview | What is BugEaters?
+## first-steps | First steps | How to run, what kills you, who eats whom.
+
+:::shot runner | This is a vertical runner
+
+The road goes **up**. You keep running for about a minute — unless something kills you.
+
+:::shot you | This is you
+
+The runner near the bottom is **you**. Swipe or tap **left / right** to change lane. Swipe **up** to jump.
+
+:::shot others | These are other people
+
+Runners ahead or beside you are **other people**. In the weekly race they are real players, not computers.
+
+:::shot obstacles | These are obstacles
+
+**Trash** stops you cold — change lane to go around. You **cannot jump** a bin. **Open manholes** kill you. A **closed lid** is safe to run over.
+
+:::shot boosts | These are boosts
+
+**Puddles** give a short speed burst when you **leave** them. **Briefcases** are powers: pick one up, then tap the armed slot to fire it. You can hold three.
+
+:::diagram food-chain
+
+**Bug eats Klaus. Klaus eats Human. Human eats Bug.** Catch the one you eat. Same species can force a cooperate-or-betray fight.
+
+---
+
+## overview | What is BugEaters? | Weekly Telegram tournament. You race real people.
 
 :::diagram week-arc
 
-BugEaters is a **weekly global tournament** inside Telegram. Real players race a near-black road as **Bug**, **Human**, or **Klaus**.
+BugEaters is a **weekly race** inside Telegram. Real people run a dark road as **Bug**, **Human**, or **Klaus**.
 
-### The pitch
-
-A lane-runner with teeth. Empty seats stay empty — **no bots** fill the room.
+You only race whoever showed up. Computers never fill in.
 
 ### How the week opens
 
@@ -22,7 +50,7 @@ A lane-runner with teeth. Empty seats stay empty — **no bots** fill the room.
 
 ---
 
-## week | The Tournament Week
+## week | The Tournament Week | Monday to Sunday. Win today to race tomorrow.
 
 :::diagram week-arc
 
@@ -44,7 +72,7 @@ Win Tuesday → Wednesday pass. Same ladder through the week. Saturday winners s
 
 ---
 
-## monday | Monday (Web2 Day)
+## monday | Monday (Web2 Day) | Free entry. Pick a UTC slot. No wallet needed.
 
 :::diagram monday-flow
 
@@ -60,7 +88,7 @@ You do **not** pick Bug / Human / Klaus — assignment happens at start. **One M
 
 ---
 
-## passes | Passes, Wallet & Burn
+## passes | Passes, Wallet & Burn | Connect TON, burn today’s pass, lock your seat.
 
 :::diagram pass-flow
 
@@ -76,7 +104,7 @@ Connect a **TON wallet**, hold today’s pass chip, tap **Ready**, then **burn**
 
 ---
 
-## lobby | Lobby & Matchmaking
+## lobby | Lobby & Matchmaking | Ready up. The race starts on time with whoever showed up.
 
 :::diagram lobby
 
@@ -88,11 +116,11 @@ Roster of who showed up, plus a countdown to the scheduled start. Tap **I’m re
 
 ### Who starts
 
-If some seats stay quiet, the race still fires at schedule with whoever is there. Solo lobbies are allowed. Monday roster shows “assigned at start”; pass days reveal your role after burn.
+If someone doesn't show, the race still starts on time with whoever is there. You can race even if you're the only one. Monday hides your role until start; on pass days you see it after you burn.
 
 ---
 
-## racers | Bug, Human & Klaus
+## racers | Bug, Human & Klaus | Three species, nine lanes. Eat the next in the chain.
 
 :::diagram lanes
 
@@ -106,11 +134,11 @@ Nine sub-lanes. Three species. Two deadly edges.
 
 ### The food chain
 
-**Bug eats Human. Human eats Klaus. Klaus eats Bug.** Same-species meetings can turn into a Prisoner's Dilemma — cooperate or betray. Monday assigns roles at start; Tue–Sun after burn, still aiming for roughly **3 : 2 : 1**.
+**Bug eats Klaus. Klaus eats Human. Human eats Bug.** Same-species meetings can turn into a Prisoner's Dilemma — cooperate or betray. Monday assigns roles at start; Tue–Sun after burn, still aiming for roughly **3 : 2 : 1**.
 
 ---
 
-## racing | How to Race
+## racing | How to Race | Sixty seconds. Jump, dodge, eat. Death ends the run.
 
 :::diagram controls
 
@@ -130,7 +158,7 @@ Tournament rooms are humans only. Cross-species eating follows the chain. Same s
 
 ---
 
-## sunday | Saturday & Sunday
+## sunday | Saturday & Sunday | Six rooms, then one finale. One worldwide champion.
 
 :::diagram finale
 
@@ -146,7 +174,7 @@ One global race for Sunday pass holders (max six). One worldwide champion walks 
 
 ---
 
-## champion | Champion & Billboards
+## champion | Champion & Billboards | Sunday winner owns next Monday’s roadside ads.
 
 :::diagram billboard
 
@@ -158,7 +186,7 @@ Upload creative for the following Monday. Ads sit on the **shoulders** near the 
 
 ---
 
-## abilities | Briefcase Powers
+## abilities | Briefcase Powers | Pick up briefcases. Hold three. Tap to fire.
 
 :::diagram briefcase
 
@@ -206,7 +234,7 @@ Spawn a straw obstacle ahead as a rival hazard.
 
 ---
 
-## hub | Week Hub Screens
+## hub | Week Hub Screens | Hub, lobby, race, results — where each screen sits.
 
 :::diagram hub-map
 
@@ -221,7 +249,7 @@ Spawn a straw obstacle ahead as a rival hazard.
 
 ---
 
-## glossary | Quick Glossary
+## glossary | Quick Glossary | Pass, burn, ready, slot, sandbox, briefcase.
 
 ### Pass
 

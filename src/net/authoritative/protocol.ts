@@ -2,13 +2,6 @@
  * =============================================================================
  * Client wire protocol — mirror of the server's `server/src/net/protocol.ts`.
  * =============================================================================
- *
- * The client and server are built separately, so they cannot import each other.
- * Instead they keep two copies of the SAME message shapes. If you change a
- * message on the server, change it here too (they are deliberately identical).
- *
- * The client only ever SENDS inputs and only ever RENDERS snapshots — it never
- * decides an outcome. That is what makes the system authoritative and fair.
  */
 
 /** Colyseus message channel names — must match the server. */
@@ -17,6 +10,7 @@ export const CHANNEL = {
   Snapshot: 'snapshot',
   Ability: 'ability',
   Elimination: 'elimination',
+  Dilemma: 'dilemma',
   Final: 'final',
 } as const;
 
@@ -43,7 +37,17 @@ export interface EatInput extends InputBase {
   type: 'eat';
   targetId: string;
 }
-export type PlayerInput = MoveInput | JumpInput | ActivateAbilityInput | EatInput;
+export interface DilemmaChoiceInput extends InputBase {
+  type: 'dilemma';
+  encounterId: string;
+  choice: 'cooperate' | 'eat';
+}
+export type PlayerInput =
+  | MoveInput
+  | JumpInput
+  | ActivateAbilityInput
+  | EatInput
+  | DilemmaChoiceInput;
 
 // ---- Snapshots + events (server -> client) --------------------------------
 
@@ -59,12 +63,16 @@ export interface PlayerSnapshotDto {
   finishTimeMs: number | null;
   lastInputSeq: number;
   abilities: string[];
-  /** True while a puddle slide boost is active. */
   sliding?: boolean;
-  /** True while stalled by a trash bin. */
   stalled?: boolean;
-  /** True while a `speed-up` ability boost is active. */
   boosted?: boolean;
+  eatProtected?: boolean;
+  blackrock?: boolean;
+  barriersOpen?: boolean;
+  flight?: boolean;
+  hellMode?: boolean;
+  slowed?: boolean;
+  flashlight?: boolean;
 }
 
 export interface HazardSnapshotDto {
@@ -75,6 +83,7 @@ export interface HazardSnapshotDto {
   open?: boolean;
   angle?: number;
   abilityId?: string;
+  resolvedBy?: string[];
 }
 
 export type RacePhaseWire = 'waiting' | 'countdown' | 'racing' | 'finished';
@@ -86,7 +95,6 @@ export interface SnapshotMessage {
   elapsedMs: number;
   players: PlayerSnapshotDto[];
   hazards: HazardSnapshotDto[];
-  /** Open/closed state per main-lane divider (0 = Bugs|Humans, 1 = Humans|Klaus). */
   dividersOpen: boolean[];
 }
 
@@ -95,13 +103,26 @@ export interface AbilityMessage {
   abilityId: string;
   raceMs: number;
   eliminatedIds?: string[];
+  placedHazardId?: number;
 }
 
 export interface EliminationMessage {
   targetId: string;
   actorId: string | null;
   raceMs: number;
-  cause: 'eat' | 'ability';
+  cause: 'eat' | 'ability' | 'dilemma';
+}
+
+export interface DilemmaMessage {
+  type: 'start' | 'resolve';
+  encounterId: string;
+  raceMs: number;
+  aId: string;
+  bId: string;
+  deadlineRaceMs?: number;
+  outcome?: string;
+  diedIds?: string[];
+  boostedIds?: string[];
 }
 
 export interface FinalMessage {

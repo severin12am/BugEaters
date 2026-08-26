@@ -10,57 +10,44 @@ import {
   createMonoPanel,
   createMonoText,
 } from '../ui/UiChrome';
+import { createFoodChainIconRows, createRoadItemLegend } from '../ui/guideIcons';
 import { MONO } from '../ui/theme';
 import { isDevSessionUiEnabled } from '../tournament/devSession';
 import { markOnboardingComplete } from '../tournament/onboarding';
+
+type OnboardingVisual = 'road' | 'eats';
 
 interface OnboardingStep {
   eyebrow: string;
   title: string;
   body: string;
   bullets: string[];
+  visual?: OnboardingVisual;
 }
 
 const STEPS: OnboardingStep[] = [
   {
-    eyebrow: 'Welcome',
-    title: 'BugEaters',
-    body: 'A weekly global tournament in Telegram — real players race as Bug, Human, or Klaus.',
-    bullets: [
-      'No bots in tournament races',
-      'Monday is free — no wallet needed',
-      'One champion every Sunday',
-    ],
-  },
-  {
-    eyebrow: 'The week',
-    title: 'Race through the week',
-    body: 'Win today to earn tomorrow\'s pass. The week ends with one worldwide finale.',
-    bullets: [
-      'Mon — free entry, pick a time slot',
-      'Tue–Sat — burn a day pass to race',
-      'Sun — finale; champion gets Monday billboard rights',
-    ],
-  },
-  {
-    eyebrow: 'Controls',
-    title: 'How to race',
-    body: 'Sixty seconds. Only survivors move on — dying ends your run.',
+    eyebrow: 'Race',
+    title: 'How to run',
+    body: 'Sixty seconds on a dark road. Dying ends your run.',
     bullets: [
       'Swipe or tap left / right to change lane',
       'Swipe up to jump',
-      'Trash stops you (change lane) · puddles boost · open manholes kill',
     ],
   },
   {
+    eyebrow: 'The road',
+    title: 'Obstacles and boosts',
+    body: 'These four things decide most races.',
+    bullets: [],
+    visual: 'road',
+  },
+  {
     eyebrow: 'Food chain',
-    title: 'Eat or be eaten',
-    body: 'Three species on a 9-lane road. Cross-species eating is fair game.',
-    bullets: [
-      'Bug eats Human · Human eats Klaus · Klaus eats Bug',
-      'Same-species: cooperate or betray',
-      'Pick up briefcases — tap to fire powers',
-    ],
+    title: 'Who eats whom',
+    body: 'Catch the one you eat. Same species: cooperate or betray.',
+    bullets: [],
+    visual: 'eats',
   },
 ];
 
@@ -117,7 +104,6 @@ export class OnboardingScene extends Phaser.Scene {
     const isFirst = this.stepIndex === 0;
     const isLast = this.stepIndex === STEPS.length - 1;
 
-    // Top: skip whole flow
     const skip = createMonoButton(
       this,
       pad + panelW - ux(40),
@@ -131,46 +117,40 @@ export class OnboardingScene extends Phaser.Scene {
 
     createMonoText(this, cx, getContentTopY(this, 36), 'BUG EATERS', 'label').setOrigin(0.5);
 
-    // Progress dots
     this.renderDots(cx, getContentTopY(this, 72));
 
-    // Card
     const cardY = getContentTopY(this, 100);
     const cardH = getMenuBottomY(this, 140) - cardY;
     createMonoPanel(this, pad, cardY, { width: panelW, height: cardH, raised: true });
 
-    createMonoText(this, pad + ux(20), cardY + ux(28), step.eyebrow, 'caption', 0, 0.5);
-    createMonoText(this, pad + ux(20), cardY + ux(58), step.title, 'title', 0, 0.5)
-      .setWordWrapWidth(panelW - ux(40));
-
-    const body = createMonoText(
-      this,
-      pad + ux(20),
-      cardY + ux(100),
-      step.body,
-      'body',
-      0,
-      0,
+    const innerW = panelW - ux(40);
+    createMonoText(this, pad + ux(20), cardY + ux(22), step.eyebrow, 'caption', 0, 0.5);
+    createMonoText(this, pad + ux(20), cardY + ux(48), step.title, 'title', 0, 0.5).setWordWrapWidth(
+      innerW,
     );
-    body.setWordWrapWidth(panelW - ux(40));
 
-    let bulletY = cardY + ux(100) + body.height + ux(24);
-    for (const line of step.bullets) {
-      const bullet = createMonoText(
-        this,
-        pad + ux(20),
-        bulletY,
-        `·  ${line}`,
-        'caption',
-        0,
-        0,
-      );
-      bullet.setWordWrapWidth(panelW - ux(40));
-      bullet.setColor('#8a8a8a');
-      bulletY += bullet.height + ux(14);
+    const body = createMonoText(this, pad + ux(20), cardY + ux(86), step.body, 'body', 0, 0);
+    body.setWordWrapWidth(innerW);
+
+    let cursorY = cardY + ux(86) + body.height + ux(16);
+
+    if (step.visual === 'road') {
+      const legend = createRoadItemLegend(this, innerW);
+      legend.container.setPosition(pad + ux(20), cursorY);
+      cursorY += legend.height + ux(12);
+    } else if (step.visual === 'eats') {
+      const chain = createFoodChainIconRows(this, innerW);
+      chain.container.setPosition(pad + ux(20), cursorY);
+      cursorY += chain.height + ux(12);
     }
 
-    // Step counter
+    for (const line of step.bullets) {
+      const bullet = createMonoText(this, pad + ux(20), cursorY, `·  ${line}`, 'caption', 0, 0);
+      bullet.setWordWrapWidth(innerW);
+      bullet.setColor('#8a8a8a');
+      cursorY += bullet.height + ux(12);
+    }
+
     createMonoText(
       this,
       cx,
@@ -179,7 +159,6 @@ export class OnboardingScene extends Phaser.Scene {
       'caption',
     ).setOrigin(0.5);
 
-    // Nav row
     const navY = getMenuBottomY(this, 64);
     const btnH = ux(52);
     const gap = ux(10);
@@ -189,15 +168,7 @@ export class OnboardingScene extends Phaser.Scene {
       bindButtonClick(next, () => this.goNext());
     } else {
       const half = (panelW - gap) / 2;
-      const back = createMonoButton(
-        this,
-        pad + half / 2,
-        navY,
-        'Back',
-        'secondary',
-        half,
-        btnH,
-      );
+      const back = createMonoButton(this, pad + half / 2, navY, 'Back', 'secondary', half, btnH);
       bindButtonClick(back, () => this.goBack());
 
       const next = createMonoButton(
@@ -221,9 +192,7 @@ export class OnboardingScene extends Phaser.Scene {
 
     for (let i = 0; i < STEPS.length; i++) {
       const active = i === this.stepIndex;
-      this.add
-        .circle(x, y, size / 2, active ? MONO.white : MONO.border, 1)
-        .setDepth(10);
+      this.add.circle(x, y, size / 2, active ? MONO.white : MONO.border, 1).setDepth(10);
       x += size + gap;
     }
   }

@@ -9,6 +9,7 @@ import { preloadAbilityAssets } from '../config/abilities';
 import { preloadBriefcaseAssets } from '../utils/briefcaseSprites';
 import { preloadPropAssets } from '../utils/propSprites';
 import { preloadAudioAssets } from '../utils/audioAssets';
+import { preloadGuideShots } from '../ui/encyclopediaShots';
 import { isAbilityLabFromUrl } from '../dev/abilityLab';
 import { CharacterType } from '../utils/constants';
 import { isDevSessionUiEnabled } from '../tournament/devSession';
@@ -28,6 +29,7 @@ export class BootScene extends Phaser.Scene {
     preloadBriefcaseAssets(this);
     preloadPropAssets(this);
     preloadAudioAssets(this);
+    preloadGuideShots(this);
   }
 
   create(): void {
@@ -44,7 +46,7 @@ export class BootScene extends Phaser.Scene {
       this.scene.start('OnboardingScene');
       return;
     }
-    // Playtest builds always open the session picker first (Solo practice lives there).
+    // Playtest builds always open the session picker first.
     if (isDevSessionUiEnabled()) {
       this.scene.start('DevSessionScene');
       return;
@@ -81,7 +83,7 @@ export const REGISTRY_KEYS = {
   isChampion: 'isChampion',
   /** Dev ability sandbox (`?abilityLab=1`). */
   abilityLab: 'abilityLab',
-  /** Offline practice race (no room) — set by lobby Solo practice. */
+  /** Offline practice race (no room) — leftover flag; playtest menu no longer offers Solo. */
   soloPractice: 'soloPractice',
   /**
    * Local authoritative race options (dev playtest). When set, GameScene joins
@@ -93,7 +95,7 @@ export const REGISTRY_KEYS = {
   authStandings: 'authStandings',
 } as const;
 
-/** Options for a local/dev authoritative race (see LobbyScene). */
+/** Options for a local/dev authoritative race (see LobbyScene). `roomId` is the Colyseus wave room from the ticket. */
 export interface AuthLocalRaceOptions {
   roomId: string;
   userId: string;

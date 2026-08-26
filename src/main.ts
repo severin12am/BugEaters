@@ -11,8 +11,9 @@ initTelegramViewport();
  */
 const game = new Phaser.Game(gameConfig);
 
-// Dev-only handle so local tooling can inspect live race state. Never in prod.
-if (import.meta.env.DEV) {
+// Expose for local tooling + playtest builds (Pages with VITE_ALLOW_DEV_SESSION).
+// Omit from true production builds when that flag is off.
+if (import.meta.env.DEV || import.meta.env.VITE_ALLOW_DEV_SESSION === 'true') {
   (window as unknown as { game?: Phaser.Game }).game = game;
 }
 

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { ABILITY_DEFAULT_DURATION_SEC } from '../config/abilities';
 import type { ObstacleManager } from './ObstacleManager';
-import { ux } from '../utils/constants';
+import { DISPLAY_DPR, ux } from '../utils/constants';
 
 export type PlaceableObstacle = 'passport' | 'straw';
 
@@ -14,6 +14,10 @@ export class PassportPlacementManager {
   private armedUntilMs = 0;
   private ignoreUntilMs = 0;
   private pointerHandler: ((pointer: Phaser.Input.Pointer) => void) | null = null;
+  /** When set, placement is forwarded (auth race) instead of local ObstacleManager. */
+  private authPlaceHandler:
+    | ((kind: PlaceableObstacle, worldX: number, aheadLogicalPx: number) => void)
+    | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -22,6 +26,12 @@ export class PassportPlacementManager {
     private readonly shouldIgnorePointer: (x: number, y: number) => boolean,
     private readonly showToast: (msg: string) => void,
   ) {}
+
+  setAuthPlaceHandler(
+    handler: ((kind: PlaceableObstacle, worldX: number, aheadLogicalPx: number) => void) | null,
+  ): void {
+    this.authPlaceHandler = handler;
+  }
 
   isArmed(): boolean {
     return this.armed !== null;
@@ -87,7 +97,10 @@ export class PassportPlacementManager {
       this.groundY,
     );
 
-    if (this.armed === 'passport') {
+    if (this.authPlaceHandler) {
+      // Server uses logical px; game coords are DPR-scaled.
+      this.authPlaceHandler(this.armed, worldX / DISPLAY_DPR, tapAhead / DISPLAY_DPR);
+    } else if (this.armed === 'passport') {
       this.obstacleManager.spawnPassportAtWorld(worldX, feetY);
     } else {
       this.obstacleManager.spawnStrawAtWorld(worldX, feetY);

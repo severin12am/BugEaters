@@ -32,6 +32,7 @@ import { TUNING } from '../config/tuning';
 import {
   CharacterType,
   COLORS,
+  DISPLAY_DPR,
   GAME_HEIGHT,
   GAME_WIDTH,
   RACE_DISTANCE,
@@ -105,6 +106,8 @@ export class GameScene extends Phaser.Scene {
   private authWorldRenderer: AuthWorldRenderer | null = null;
   /** Latest server divider open/closed state, used to gate local move prediction. */
   private authDividersOpen: boolean[] = [true, true];
+  /** OPENED BORDERS from the server — must also unlock local cross prediction. */
+  private authBarriersOpen = false;
   /** Throttle for outgoing movement broadcasts (~12Hz). */
   private broadcastAccumMs = 0;
   /** Movement broadcast cadence (~12 updates/sec). */
@@ -475,9 +478,8 @@ export class GameScene extends Phaser.Scene {
         roomId,
         {
           onFinal: (event) => this.handleAuthFinal(event),
-          onAbility: (_event) => {
-            // TODO(game-rules): map server ability events to full client VFX.
-          },
+          onAbility: (event) => this.handleAuthAbilityEvent(event),
+          onDilemma: (event) => this.handleAuthDilemmaEvent(event),
           onElimination: (event) => {
             const selfId = this.authRace?.getSelfUserId();
             if (event.targetId === selfId) {
@@ -569,6 +571,7 @@ export class GameScene extends Phaser.Scene {
           this.remoteRunnerManager.setSymmetricGap(true);
         }
       }
+      this.wireAuthAbilityGestures();
       const waitSec = Math.max(0, Math.ceil((this.raceStartMs - Date.now()) / 1000));
       this.authRaceStatusText?.setText(
         waitSec > 0 ? `Joined · starting in ${waitSec}s` : 'Joined · GO',
@@ -1008,8 +1011,12 @@ export class GameScene extends Phaser.Scene {
 
   private canCrossDivider(index: 0 | 1): boolean {
     if (this.authWorld) {
-      // Gate local move prediction on the SERVER's divider state so the client
-      // never predicts a crossing the server will reject (and vice versa).
+      // OPENED BORDERS: server allows the cross even while dividersOpen is false.
+      // Without this, the line disappears visually but local prediction still
+      // blocks — so the move never even gets sent.
+      if (this.authBarriersOpen) {
+        return true;
+      }
       return this.authDividersOpen[index] ?? true;
     }
     return !this.laneDividers[index]?.blocksCrossingAtY(this.groundY);
@@ -1162,44 +1169,49 @@ export class GameScene extends Phaser.Scene {
       this.distanceText.setText('0%');
       this.driveDividers(view.dividersOpen);
       this.renderRivals(view.remotePlayers, view.raceMs, self ? self.distance : 0);
-      this.authWorldRenderer?.render(view.hazards, 0);
+      this.authWorldRenderer?.render(view.hazards, 0, this.authRace.getSelfUserId());
       return;
     }
     this.authRaceStatusText?.setText('');
     this.elapsedMs = view.raceMs;
 
-    // ---- Drive the visual world from the render-clock-aligned distance ----
-    // self.distance is sampled at the same delayed clock as rivals (see
-    // AuthoritativeRaceClient), so road, hazards and the rival gap all share one
-    // consistent frame — the on-screen gap matches across both screens.
-    const renderDistance = self ? self.distance : this.roadScroll.distanceTraveled;
-    this.roadScroll.stepToWorldDistance(renderDistance, 1);
+    // ---- Drive the visual world from the shared extrapolated distance ----
+    // self + rivals all advance from the same snapshot age, so the road is
+    // smooth between 20Hz packets and the gap matches on both screens.
+    // Server distances are logical px; road scroll / screen space are DPR-scaled.
+    const renderDistance = self
+      ? self.distance
+      : this.roadScroll.distanceTraveled / Math.max(DISPLAY_DPR, 1);
+    this.roadScroll.stepToWorldDistance(ux(renderDistance), 1);
     this.driveDividers(view.dividersOpen);
 
     // ---- HUD ----
     const remainingSec = Math.max(0, RACE_DURATION_SEC - this.elapsedMs / 1000);
     this.timerText.setText(this.formatTime(remainingSec));
     this.setTimerUrgency(remainingSec <= 10 && remainingSec > 0);
-    const progress = Math.min(1, this.roadScroll.distanceTraveled / RACE_DISTANCE);
+    const progress = Math.min(1, ux(renderDistance) / RACE_DISTANCE);
     this.distanceText.setText(`${Math.floor(progress * 100)}%`);
 
     // ---- Local runner: predicted lane + jump physics, authoritative status ----
     if (self && !this.playerDied) {
       this.player.updatePhysics(delta);
-      // Reconcile lane to the server if prediction drifted (e.g. divider reject).
-      if (self.lane !== this.laneManager.getGlobalSubLaneIndex()) {
+      // Prefer predicted lane (includes unacked moves). Soft-correct without
+      // killing an in-flight lane tween every frame (that felt like lag).
+      const localLane = this.laneManager.getGlobalSubLaneIndex();
+      if (self.lane !== localLane) {
         this.laneManager.setAssignedSubLane(self.lane);
         this.player.x = this.laneManager.getCurrentX();
       }
-      if (this.player.isGroundedOnTrack()) {
+      if (this.player.isGroundedOnTrack() && !this.player.isFlightModeVisual()) {
         this.player.y = this.groundY;
       }
       this.applyAuthSelfVisual(self);
+      this.syncAuthAbilities(self.abilities);
     }
 
     // ---- Rivals + world (both anchored to the same smoothed distance) ----
     this.renderRivals(view.remotePlayers, view.raceMs, renderDistance);
-    this.authWorldRenderer?.render(view.hazards, renderDistance);
+    this.authWorldRenderer?.render(view.hazards, renderDistance, this.authRace.getSelfUserId());
     this.lampManager.tickSpawning(delta, RACE_DISTANCE);
 
     // ---- Intents + presentation ----
@@ -1208,6 +1220,9 @@ export class GameScene extends Phaser.Scene {
       const nowMs = this.time.now;
       this.abilityExecutor.tickTimedEffects(nowMs);
       this.syringeThrowManager?.update(nowMs);
+      this.passportPlacementManager?.update(nowMs);
+      // Auth dilemma overlay timer only (server owns start/resolve).
+      this.dilemmaManager.tick(this.player, nowMs);
     }
     this.updateCameraFollow();
     this.player.tickFootsteps();
@@ -1228,18 +1243,74 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Reflects server-side effect flags on the local runner's visuals. */
-  private applyAuthSelfVisual(self: { sliding: boolean; stalled: boolean; boosted: boolean }): void {
+  private applyAuthSelfVisual(self: {
+    sliding: boolean;
+    stalled: boolean;
+    boosted: boolean;
+    barriersOpen: boolean;
+    flight: boolean;
+    flashlight: boolean;
+    slowed: boolean;
+    blackrock: boolean;
+    eatProtected: boolean;
+    hellMode: boolean;
+  }): void {
+    this.authBarriersOpen = self.barriersOpen;
+    const nowMs = this.time.now;
+    // Refresh local timers from the server — otherwise tickTimedEffects clears
+    // flight/flashlight every frame (auth activate is visual-only).
+    this.abilityExecutor.syncAuthServerFlags(nowMs, {
+      flashlight: self.flashlight,
+      flight: self.flight,
+      barriersOpen: self.barriersOpen,
+      blackrock: self.blackrock,
+      eatProtected: self.eatProtected,
+      hellMode: self.hellMode,
+      slowed: self.slowed,
+    });
     this.player.setPuddleSlideVisual(self.sliding);
     this.player.setSpeedBoostVisual(self.boosted);
     this.player.setSpeedStreakVisual(self.boosted || self.sliding);
-    // Stuck / stalled reads as a slow streak so the player sees why they lag.
-    this.player.setSlowStreakVisual(self.stalled);
+    // Stuck / stalled / rival slow reads as a slow streak.
+    this.player.setSlowStreakVisual(self.stalled || self.slowed);
+    this.player.setFlightModeVisual(self.flight);
+    for (const divider of this.laneDividers) {
+      divider.setForcedOpen(self.barriersOpen);
+    }
+    this.lightingManager.setFlashlightBoost(self.flashlight);
   }
 
   /**
-   * Places rivals for authoritative mode. Both the rival distances and
-   * `selfDistance` come from ONE interpolated frame (getRenderState → the shared
-   * SnapshotInterpolator at a single render clock), so the gap is identical on
+   * Mirror server ability inventory into the HUD. Solo collects via ObstacleManager;
+   * authoritative races grant on the server — without this, briefcases never appear.
+   */
+  private syncAuthAbilities(serverAbilities: string[]): void {
+    const local = this.abilityInventory.readonlySlots();
+    if (
+      local.length === serverAbilities.length &&
+      local.every((id, index) => id === serverAbilities[index])
+    ) {
+      return;
+    }
+    const prevCount = local.length;
+    this.abilityInventory.reset();
+    for (const id of serverAbilities) {
+      this.abilityInventory.add(id);
+    }
+    this.abilityHud.refresh();
+    if (serverAbilities.length > prevCount) {
+      const newest = serverAbilities[serverAbilities.length - 1];
+      try {
+        this.abilityHud.showToast(`${getAbility(newest).name} armed — tap to use`);
+      } catch {
+        this.abilityHud.showToast('Ability armed — tap to use');
+      }
+    }
+  }
+
+  /**
+   * Places rivals for authoritative mode. Rival + self distances come from the
+   * same snapshot + elapsed time (getRenderState), so the gap is identical on
    * both screens and a stuck rival genuinely climbs off the top. We intentionally
    * do NOT run RemotePlayer's own interpolation here — that second, jitter-based
    * pass was what made the two tabs disagree.
@@ -1595,10 +1666,11 @@ export class GameScene extends Phaser.Scene {
     if (!abilityId) {
       return;
     }
-    this.abilityExecutor.activate(abilityId);
-    // Authoritative races resolve ability effects on the server.
-    if (this.authWorld) {
-      this.authRace?.activate(abilityId, this.player.x, this.player.getHitboxY());
+    // Auth: local VFX / arm gestures only; server owns gameplay effects.
+    this.abilityExecutor.activate(abilityId, this.authWorld);
+    if (this.authWorld && this.authRace) {
+      // Deferred abilities arm without aim; throw/place sends aim next.
+      this.authRace.activate(abilityId);
     }
     if (getAbility(abilityId).kind === 'hellMode') {
       this.session?.sendAbility({
@@ -1607,6 +1679,82 @@ export class GameScene extends Phaser.Scene {
       });
     }
     this.abilityHud.refresh();
+  }
+
+  /** Syringe / passport / straw aim → logical coords for the race server. */
+  private wireAuthAbilityGestures(): void {
+    this.syringeThrowManager?.setOnThrowLand((worldX, worldY) => {
+      if (!this.authRace) {
+        return;
+      }
+      const aimX = worldX / DISPLAY_DPR;
+      // Approximate rival distance from screen Y relative to ground.
+      const aheadScreen = this.groundY - worldY;
+      const selfDist = this.authRace.getRenderState().self?.distance ?? 0;
+      const aimY = selfDist + aheadScreen / DISPLAY_DPR;
+      this.authRace.activate('needle-spawner', aimX, aimY);
+    });
+    this.passportPlacementManager?.setAuthPlaceHandler((kind, logicalX, aheadLogical) => {
+      if (!this.authRace) {
+        return;
+      }
+      const abilityId = kind === 'passport' ? 'enable-id' : 'straw-spawner';
+      this.authRace.activate(abilityId, logicalX, aheadLogical);
+    });
+  }
+
+  private handleAuthAbilityEvent(event: {
+    actorId: string;
+    abilityId: string;
+    eliminatedIds?: string[];
+  }): void {
+    const selfId = this.authRace?.getSelfUserId();
+    // Local activate already toasted/VFX'd; rivals get a short notice.
+    if (event.actorId !== selfId) {
+      try {
+        this.abilityHud.showToast(getAbility(event.abilityId).name);
+      } catch {
+        // Unknown ability id.
+      }
+    }
+    for (const id of event.eliminatedIds ?? []) {
+      if (id === selfId) {
+        if (!this.playerDied) {
+          this.triggerDeath();
+        }
+      } else {
+        this.remoteRunnerManager?.eliminate(id);
+      }
+    }
+  }
+
+  private handleAuthDilemmaEvent(event: {
+    type: 'start' | 'resolve';
+    encounterId: string;
+    aId: string;
+    bId: string;
+    deadlineRaceMs?: number;
+  }): void {
+    const selfId = this.authRace?.getSelfUserId();
+    if (!selfId) {
+      return;
+    }
+    if (event.type === 'start') {
+      if (event.aId !== selfId && event.bId !== selfId) {
+        return;
+      }
+      const rivalId = event.aId === selfId ? event.bId : event.aId;
+      const raceMs = this.authRace?.raceMs() ?? 0;
+      const remaining = Math.max(500, (event.deadlineRaceMs ?? raceMs + 2000) - raceMs);
+      this.dilemmaManager.beginAuthEncounter(
+        event.encounterId,
+        rivalId,
+        this.time.now + remaining,
+        (choice) => this.authRace?.dilemmaChoice(event.encounterId, choice),
+      );
+      return;
+    }
+    this.dilemmaManager.endAuthEncounter();
   }
 
   /** Wuhan Lab Juice can hit a bot or a real rival across open/closed lane lines. */

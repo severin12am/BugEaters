@@ -84,6 +84,8 @@ export function rivalProgressGapToScreenOffset(
  * @param progressGapPx positive when the other runner is ahead in the race
  */
 export function authRivalGapToScreenOffset(progressGapPx: number): number {
+  // Server distances are logical px; screen offsets must be DPR-scaled (same as AuthWorldRenderer).
+  const screenGap = ux(progressGapPx);
   const bound = ux(2000); // a few screens; beyond this the rival is long gone
-  return Math.max(-bound, Math.min(bound, progressGapPx));
+  return Math.max(-bound, Math.min(bound, screenGap));
 }

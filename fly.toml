@@ -12,6 +12,12 @@ primary_region = "fra"
   PORT = "2567"
   NODE_ENV = "production"
 
+# Single machine only — Colyseus rooms + /dev/ticket are in-memory (no Redis yet).
+# A second machine splits players into different races. After every deploy: fly scale count 1
+# Redis presence/driver is the unlock for horizontal scale — see docs/DEPLOY_NOW.md § Redis.
+[deploy]
+  strategy = "immediate"
+
 [http_service]
   internal_port = 2567
   force_https = true
@@ -23,3 +29,4 @@ primary_region = "fra"
 [[vm]]
   size = "shared-cpu-1x"
   memory = "512mb"
+  cpus = 1

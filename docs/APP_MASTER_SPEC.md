@@ -9,6 +9,8 @@
 > **In-game player encyclopedia:** [`content/encyclopedia.md`](../content/encyclopedia.md) — the only file for player-facing copy in the Telegram UI. Ability **names** are pulled from `src/config/abilities.ts` at runtime; ability **effect text** lives in the `### ability:<id>` blocks in that file. Do not duplicate player explanations elsewhere.
 >
 > **Live deploy / phone test:** [`DEPLOY_NOW.md`](./DEPLOY_NOW.md) · [`PHONE_TEST_NOW.md`](./PHONE_TEST_NOW.md) — URLs and ops steps; product law stays in this file.
+>
+> **Code / model audit:** [`MODEL_AUDIT_GUIDE.md`](./MODEL_AUDIT_GUIDE.md) — dual race paths, symptom→file index, server map. Use that to find code; use **this file** for product law.
 
 ---
 
@@ -18,6 +20,9 @@
 Tier 0 — CANONICAL (you are here)
 └── docs/APP_MASTER_SPEC.md
     What is fixed · adaptive · open · deferred · built today
+
+Tier 0.5 — AUDIT HANDOFF
+└── docs/MODEL_AUDIT_GUIDE.md   Find relevant code; solo vs authoritative
 
 Tier 1 — DOMAIN SPECS (detail; defer to Tier 0 for decisions)
 ├── docs/TOURNAMENT_SYSTEM_SPEC.md      … backend flows, invariants, RPC/DB sketch
@@ -67,6 +72,7 @@ Parallel tracks (not under tournament canon)
 | Blockchain engineer | This file **§8** → `TON_CRYPTO_IMPLEMENTATION_PLAN.md` |
 | Client / UI | This file **§9–10** → `TOURNAMENT_UI_BRIEF.md` → `src/scenes/` |
 | Deploy / phone test | **§11b** → `DEPLOY_NOW.md` → `PHONE_TEST_NOW.md` |
+| Code / AI auditor | `MODEL_AUDIT_GUIDE.md` → owner files → this file §2–6 for product |
 | New contributor pitch | **§16** one-paragraph → `TON_WEEKLY_TOURNAMENT_MODEL.md` |
 
 ---
@@ -425,6 +431,7 @@ Full tree: see **Documentation hierarchy** at top. Quick reference:
 | `GAME_OVERVIEW.md` | 1 | Race gameplay & Phaser architecture (**sync needed**) |
 | `VISION_READINESS.md` | 2 | Point-in-time readiness audit |
 | `TON_CRYPTO_DECISION_QUESTIONNAIRE.md` | 2 | Historical Q&A — use §3–6 here instead |
+| `MODEL_AUDIT_GUIDE.md` | Audit | Symptom→file, dual paths, server map |
 | `DEPLOY_NOW.md` | Ops | Fly + Pages deploy steps |
 | `PHONE_TEST_NOW.md` | Ops | Current BotFather / phone URL |
 | `AUTHORITATIVE_RACE_SERVER.md` | Ops | Race-server env / Docker |

@@ -8,6 +8,7 @@ import { ux } from '../utils/constants';
 import { fontSize } from '../utils/layout';
 import { gameText } from '../utils/display';
 import { addCornerBrackets, createMonoPanel } from './UiChrome';
+import { createFoodChainIconRows } from './guideIcons';
 import { MONO, MONO_CSS } from './theme';
 
 export interface DiagramResult {
@@ -77,7 +78,7 @@ function label(
   x: number,
   y: number,
   text: string,
-  size = 11,
+  size = 13,
   color: string = MONO_CSS.text,
 ): Phaser.GameObjects.Text {
   return gameText(scene, x, y, text.toUpperCase(), {
@@ -97,7 +98,7 @@ function caption(
 ): Phaser.GameObjects.Text {
   const t = gameText(scene, x, y, text, {
     fontFamily: MONO_CSS.fontBody,
-    fontSize: fontSize(11),
+    fontSize: fontSize(14),
     color: MONO_CSS.textMuted,
   }).setOrigin(0.5, 0);
   if (wrap) {
@@ -251,7 +252,7 @@ function drawLanes(scene: Phaser.Scene, width: number): DiagramResult {
       g.lineTo(sx, roadY + roadH - ux(10));
       g.strokePath();
     }
-    inner.add(label(scene, cx, roadY + roadH / 2 - ux(8), band.label, 12));
+    inner.add(label(scene, cx, roadY + roadH / 2 - ux(8), band.label, 13));
     inner.add(
       gameText(scene, cx, roadY + roadH / 2 + ux(12), band.sub, {
         fontFamily: MONO_CSS.fontDisplay,
@@ -276,51 +277,21 @@ function drawLanes(scene: Phaser.Scene, width: number): DiagramResult {
 }
 
 function drawFoodChain(scene: Phaser.Scene, width: number): DiagramResult {
-  const height = ux(168);
+  const innerW = width - ux(28);
+  const rows = createFoodChainIconRows(scene, innerW);
+  const captionH = ux(28);
+  const height = ux(20) + rows.height + captionH;
   const { root, inner, pad } = frame(scene, width, height);
-  const cx = width / 2;
-  const cy = ux(78);
-  const r = ux(46);
-  const nodes = [
-    { name: 'BUG', ang: -Math.PI / 2 },
-    { name: 'HUMAN', ang: Math.PI / 6 },
-    { name: 'KLAUS', ang: (5 * Math.PI) / 6 },
-  ];
-
-  const g = scene.add.graphics();
-  const pts = nodes.map((n) => ({
-    ...n,
-    x: cx + Math.cos(n.ang) * r,
-    y: cy + Math.sin(n.ang) * r,
-  }));
-
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[i];
-    const b = pts[(i + 1) % pts.length];
-    // shorten arrow so it doesn't enter the node circle
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const inset = ux(22);
-    arrow(
-      g,
-      a.x + (dx / len) * inset,
-      a.y + (dy / len) * inset,
-      b.x - (dx / len) * inset,
-      b.y - (dy / len) * inset,
-    );
-  }
-  inner.add(g);
-
-  pts.forEach((p) => {
-    const ring = scene.add.circle(p.x, p.y, ux(20), MONO.surface);
-    ring.setStrokeStyle(ux(1.5), MONO.borderStrong, 0.9);
-    inner.add(ring);
-    inner.add(label(scene, p.x, p.y, p.name, 9));
-  });
-
+  rows.container.setPosition(pad, ux(12));
+  inner.add(rows.container);
   inner.add(
-    caption(scene, cx, height - ux(28), 'Same species → cooperate or betray', width - pad * 2),
+    caption(
+      scene,
+      width / 2,
+      height - ux(22),
+      'Same species → cooperate or betray',
+      width - pad * 2,
+    ),
   );
   return { container: root, height };
 }
@@ -374,7 +345,7 @@ function drawControls(scene: Phaser.Scene, width: number): DiagramResult {
       g.fillRect(icx - ux(4), icy - ux(12), ux(8), ux(5));
     }
     inner.add(g);
-    inner.add(label(scene, icx, y + ux(52), cell.title, 10));
+    inner.add(label(scene, icx, y + ux(52), cell.title, 12));
     const hint = caption(scene, icx, y + ux(64), cell.hint, cellW - ux(8));
     hint.setAlign('center');
     inner.add(hint);
@@ -413,7 +384,7 @@ function drawObstacles(scene: Phaser.Scene, width: number): DiagramResult {
       g.strokeCircle(x, y + ux(18), ux(5));
     }
     inner.add(g);
-    inner.add(label(scene, x, y + ux(52), item.title, 10));
+    inner.add(label(scene, x, y + ux(52), item.title, 12));
     inner.add(caption(scene, x, y + ux(68), item.note, cellW - ux(6)));
   });
 
@@ -509,7 +480,7 @@ function drawLobby(scene: Phaser.Scene, width: number): DiagramResult {
       fontStyle: 'bold',
     }).setOrigin(0.5),
   );
-  inner.add(caption(scene, width / 2, height - ux(22), 'Empty seats stay empty — no bots', width - pad * 2));
+  inner.add(caption(scene, width / 2, height - ux(22), 'Whoever showed up races', width - pad * 2));
   return { container: root, height };
 }
 
@@ -570,7 +541,7 @@ function drawFinale(scene: Phaser.Scene, width: number): DiagramResult {
       }).setOrigin(0.5),
     );
   }
-  inner.add(label(scene, width / 2, ux(18), 'SAT · 6 ROOMS', 9, MONO_CSS.textMuted));
+  inner.add(label(scene, width / 2, ux(18), 'SAT · 6 ROOMS', 12, MONO_CSS.textMuted));
 
   // arrow down to sunday
   arrow(g, width / 2, ux(96), width / 2, ux(108), MONO.textSecondary, 0.8);
@@ -668,6 +639,11 @@ export function createSectionGlyph(
   const s = size * 0.28;
 
   switch (sectionId) {
+    case 'first-steps':
+      g.lineBetween(0, s * 0.7, 0, -s * 0.55);
+      g.lineBetween(-s * 0.45, -s * 0.1, 0, -s * 0.7);
+      g.lineBetween(s * 0.45, -s * 0.1, 0, -s * 0.7);
+      break;
     case 'overview':
       g.strokeCircle(0, 0, s);
       g.fillStyle(MONO.white, 0.9);

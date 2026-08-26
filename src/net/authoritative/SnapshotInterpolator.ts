@@ -15,9 +15,13 @@
  * The local player is NOT interpolated here; it is predicted (see InputPredictor).
  */
 import type { PlayerSnapshotDto, SnapshotMessage } from './protocol.js';
+import { extrapolateDistance, snapshotAgeSec, speedMultiplierFromSnapshot } from './distanceExtrapolator.js';
 
-/** How far in the past we render remote players, in ms. ~2 snapshot intervals. */
-const DEFAULT_INTERPOLATION_DELAY_MS = 100;
+/**
+ * How far in the past we render remote players, in ms.
+ * Keep this tiny — large delays feel like "everyone else is laggy".
+ */
+const DEFAULT_INTERPOLATION_DELAY_MS = 30;
 /** How many snapshots to retain for interpolation. */
 const BUFFER_SIZE = 12;
 
@@ -38,15 +42,18 @@ export interface InterpolatedPlayer {
 
 export class SnapshotInterpolator {
   private readonly buffer: SnapshotMessage[] = [];
-  /** Local clock minus server clock, measured from snapshots. */
+  /** Local clock minus server clock (set by the facade after smoothing). */
   private clockOffsetMs = 0;
 
   constructor(private readonly delayMs = DEFAULT_INTERPOLATION_DELAY_MS) {}
 
+  /** Uses the facade's smoothed clock so one late packet cannot yank remotes. */
+  setClockOffset(offsetMs: number): void {
+    this.clockOffsetMs = offsetMs;
+  }
+
   /** Ingests a new authoritative snapshot. */
   push(snapshot: SnapshotMessage): void {
-    // Track the offset so we can convert local render time to server time.
-    this.clockOffsetMs = Date.now() - snapshot.serverTimeMs;
     this.buffer.push(snapshot);
     // Keep the buffer bounded and ordered.
     if (this.buffer.length > BUFFER_SIZE) {
@@ -70,38 +77,31 @@ export class SnapshotInterpolator {
       return [];
     }
 
+    const newest = this.latest();
     const result: InterpolatedPlayer[] = [];
     for (const newPlayer of newer.players) {
       if (newPlayer.userId === selfUserId) {
         continue;
       }
       const oldPlayer = older?.players.find((p) => p.userId === newPlayer.userId);
-      result.push(oldPlayer ? lerpPlayer(oldPlayer, newPlayer, t) : toInterpolated(newPlayer));
+      const blended = oldPlayer ? lerpPlayer(oldPlayer, newPlayer, t) : toInterpolated(newPlayer);
+      const live = newest?.players.find((player) => player.userId === newPlayer.userId) ?? newPlayer;
+      result.push(this.withLiveDistance(blended, live, newest?.serverTimeMs ?? newer.serverTimeMs));
     }
     return result;
   }
 
   /**
-   * Interpolated forward distance for ANY player (including the local one) at the
-   * SAME render clock used for remote players. This is what makes the on-screen
-   * gap between two runners identical on both screens: both distances are sampled
-   * from one shared moment in the past, not "self live vs rivals delayed".
+   * Forward distance for any runner from the newest snapshot plus shared
+   * elapsed time — same formula the facade uses for the local player.
    */
   sampleDistance(userId: string): number | null {
-    const renderServerTime = Date.now() - this.clockOffsetMs - this.delayMs;
-    const [older, newer, t] = this.findStraddling(renderServerTime);
-    if (!newer) {
+    const newest = this.latest();
+    const player = newest?.players.find((entry) => entry.userId === userId);
+    if (!newest || !player) {
       return null;
     }
-    const newPlayer = newer.players.find((p) => p.userId === userId);
-    if (!newPlayer) {
-      return null;
-    }
-    const oldPlayer = older?.players.find((p) => p.userId === userId);
-    if (!oldPlayer) {
-      return newPlayer.distance;
-    }
-    return oldPlayer.distance + (newPlayer.distance - oldPlayer.distance) * t;
+    return this.extrapolatedDistance(player, newest.serverTimeMs);
   }
 
   reset(): void {
@@ -129,7 +129,26 @@ export class SnapshotInterpolator {
       }
     }
     // Render time is outside the buffer: fall back to the newest snapshot.
+    // Distance is still advanced in withLiveDistance so a late packet
+    // does not freeze the rival.
     return [null, this.buffer[this.buffer.length - 1], 0];
+  }
+
+  private withLiveDistance(
+    blended: InterpolatedPlayer,
+    source: PlayerSnapshotDto,
+    snapshotServerTimeMs: number,
+  ): InterpolatedPlayer {
+    return { ...blended, distance: this.extrapolatedDistance(source, snapshotServerTimeMs) };
+  }
+
+  private extrapolatedDistance(source: PlayerSnapshotDto, snapshotServerTimeMs: number): number {
+    const serverNow = Date.now() - this.clockOffsetMs;
+    return extrapolateDistance(
+      source.distance,
+      speedMultiplierFromSnapshot(source),
+      snapshotAgeSec(serverNow, snapshotServerTimeMs),
+    );
   }
 }
 
@@ -137,8 +156,9 @@ function lerpPlayer(a: PlayerSnapshotDto, b: PlayerSnapshotDto, t: number): Inte
   return {
     userId: b.userId,
     role: b.role,
-    // Lane is discrete; snap to the destination once past the halfway point.
-    lane: t < 0.5 ? a.lane : b.lane,
+    // Lane changes are discrete taps — show the new lane immediately so rivals
+    // don't look a beat late when they dodge.
+    lane: b.lane,
     x: a.x + (b.x - a.x) * t,
     distance: a.distance + (b.distance - a.distance) * t,
     jumpUntilMs: b.jumpUntilMs,

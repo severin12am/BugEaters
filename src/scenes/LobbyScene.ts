@@ -35,7 +35,7 @@ import {
 import { REGISTRY_KEYS, type AuthLocalRaceOptions } from './BootScene';
 import { isDevSessionUiEnabled } from '../tournament/devSession';
 import { isRaceDevMode, isRaceServerConfigured } from '../net/AuthoritativeRaceClient';
-import { raceServerHttpBase } from '../net/authoritative/env';
+import { PLAYTEST_LOBBY_ROOM_ID, raceServerHttpBase } from '../net/authoritative/env';
 
 /**
  * Tournament lobby — matchmaking, pass burn, role reveal, synchronized start.
@@ -83,7 +83,7 @@ export class LobbyScene extends Phaser.Scene {
     this.assignedRole =
       (this.registry.get(REGISTRY_KEYS.assignedRole) as CharacterType | null) ?? null;
     this.renderLobbyShell();
-    this.offerSoloPractice();
+    this.offerTesting();
     void this.initLobby();
   }
 
@@ -132,7 +132,7 @@ export class LobbyScene extends Phaser.Scene {
       this.registry.set(REGISTRY_KEYS.roomMembers, null);
       this.statusText.setText(
         isDevSessionUiEnabled()
-          ? 'No live lobby — use Solo practice'
+          ? 'No live lobby — use Testing'
           : 'Offline — connect Supabase to race',
       );
       return;
@@ -173,46 +173,23 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   /** Always available in playtest builds so a hung join cannot block racing. */
-  private offerSoloPractice(): void {
+  private offerTesting(): void {
     if (!isDevSessionUiEnabled() || this.soloBtn) {
+      return;
+    }
+    if (!(isRaceServerConfigured && isRaceDevMode)) {
       return;
     }
     this.soloBtn = createMonoButton(
       this,
       GAME_WIDTH / 2,
       getMenuBottomY(this, 148),
-      'Solo practice',
+      'Testing',
       'primary',
       ux(220),
       ux(48),
     );
-    bindButtonClick(this.soloBtn, () => {
-      this.session?.destroy();
-      this.session = null;
-      this.registry.set(REGISTRY_KEYS.roomSession, null);
-      this.registry.set(REGISTRY_KEYS.roomMembers, null);
-      this.registry.set(REGISTRY_KEYS.authLocalRace, null);
-      this.registry.set(REGISTRY_KEYS.soloPractice, true);
-      this.registry.set(
-        REGISTRY_KEYS.selectedCharacter,
-        this.assignedRole ?? CharacterType.Human,
-      );
-      this.scene.start('GameScene');
-    });
-
-    // Authoritative local race — requires race server + VITE_RACE_DEV_MODE.
-    if (isRaceServerConfigured && isRaceDevMode) {
-      const authBtn = createMonoButton(
-        this,
-        GAME_WIDTH / 2,
-        getMenuBottomY(this, 208),
-        'Local multiplayer race',
-        'ghost',
-        ux(260),
-        ux(44),
-      );
-      bindButtonClick(authBtn, () => void this.startLocalAuthRace());
-    }
+    bindButtonClick(this.soloBtn, () => void this.startLocalAuthRace());
   }
 
   /**
@@ -231,7 +208,7 @@ export class LobbyScene extends Phaser.Scene {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          roomId: 'local-practice',
+          roomId: PLAYTEST_LOBBY_ROOM_ID,
           userId,
           maxPlayers: 6,
         }),
@@ -242,6 +219,7 @@ export class LobbyScene extends Phaser.Scene {
       const data = (await response.json()) as {
         token: string;
         claims: {
+          roomId: string;
           userId: string;
           role: 'bug' | 'human' | 'klaus';
           globalSubLane: number;
@@ -264,7 +242,7 @@ export class LobbyScene extends Phaser.Scene {
       this.registry.set(REGISTRY_KEYS.soloPractice, true);
       this.registry.set(REGISTRY_KEYS.selectedCharacter, character);
       this.registry.set(REGISTRY_KEYS.authLocalRace, {
-        roomId: 'local-practice',
+        roomId: data.claims.roomId || PLAYTEST_LOBBY_ROOM_ID,
         userId: data.claims.userId,
         role: data.claims.role,
         globalSubLane: data.claims.globalSubLane,
@@ -303,10 +281,10 @@ export class LobbyScene extends Phaser.Scene {
       }
       this.statusText.setText(
         code
-          ? `Join blocked (${code}) — use Solo practice`
-          : 'Could not join — use Solo practice',
+          ? `Join blocked (${code}) — use Testing`
+          : 'Could not join — use Testing',
       );
-      this.offerSoloPractice();
+      this.offerTesting();
       return;
     }
 

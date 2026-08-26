@@ -59,13 +59,35 @@ export class AbilityExecutor {
 
   constructor(private readonly deps: AbilityExecutorDeps) {}
 
-  activate(abilityId: string): void {
+  /**
+   * @param authVisualOnly when true (authoritative races), only toast/VFX and
+   *   arm deferred gestures — gameplay effects come from the server snapshot.
+   */
+  activate(abilityId: string, authVisualOnly = false): void {
     const ability = getAbility(abilityId);
     const now = this.deps.getNowMs();
     const durationSec = this.durationSec(ability);
 
     this.deps.showToast(`${ability.name} — ${ability.description}`);
     this.deps.player.showAbilityActivateVfx(ability.kind, durationSec);
+
+    // Deferred gestures still need local arming so the player can aim/place.
+    if (authVisualOnly) {
+      switch (ability.kind) {
+        case 'enableID':
+          this.deps.passportPlacementManager?.armPassport(durationSec);
+          break;
+        case 'spawnNeedle':
+          this.deps.syringeThrowManager?.arm();
+          break;
+        case 'spawnStraw':
+          this.deps.passportPlacementManager?.armStraw(durationSec);
+          break;
+        default:
+          break;
+      }
+      return;
+    }
 
     switch (ability.kind) {
       case 'speedUp':
@@ -179,6 +201,33 @@ export class AbilityExecutor {
 
   isNpcSlow(nowMs: number): boolean {
     return nowMs < this.effects.npcSlowUntilMs;
+  }
+
+  /**
+   * Authoritative races: keep timed flags alive from the server snapshot so
+   * {@link tickTimedEffects} does not clear flight/flashlight/borders every frame
+   * (local activate is visual-only and never sets these timers).
+   */
+  syncAuthServerFlags(
+    nowMs: number,
+    flags: {
+      flashlight: boolean;
+      flight: boolean;
+      barriersOpen: boolean;
+      blackrock: boolean;
+      eatProtected: boolean;
+      hellMode: boolean;
+      slowed: boolean;
+    },
+  ): void {
+    const hold = nowMs + 400;
+    this.effects.flashlightUntilMs = flags.flashlight ? hold : 0;
+    this.effects.flightModeUntilMs = flags.flight ? hold : 0;
+    this.effects.barriersDisabledUntilMs = flags.barriersOpen ? hold : 0;
+    this.effects.blackrockUntilMs = flags.blackrock ? hold : 0;
+    this.effects.eatProtectedUntilMs = flags.eatProtected ? hold : 0;
+    this.effects.hellModeUntilMs = flags.hellMode ? hold : 0;
+    this.effects.npcSlowUntilMs = flags.slowed ? hold : 0;
   }
 
   reset(): void {

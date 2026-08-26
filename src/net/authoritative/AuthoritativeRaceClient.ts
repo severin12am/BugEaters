@@ -24,8 +24,15 @@ import { ensureSession } from '../auth';
 import { RaceConnection, type DevTicketOptions, type JoinedRaceInfo } from './RaceConnection';
 import { InputPredictor } from './InputPredictor';
 import { SnapshotInterpolator, type InterpolatedPlayer } from './SnapshotInterpolator';
+import {
+  extrapolateDistance,
+  snapshotAgeSec,
+  smoothClockOffset,
+  speedMultiplierFromSnapshot,
+} from './distanceExtrapolator';
 import type {
   AbilityMessage,
+  DilemmaMessage,
   EliminationMessage,
   FinalMessage,
   HazardSnapshotDto,
@@ -59,9 +66,8 @@ export interface SelfRenderState {
   /** Predicted world X (instant), corrected by reconciliation. */
   x: number;
   /**
-   * Forward progress sampled at the shared render clock (same delay as rivals),
-   * so the on-screen gap between runners is consistent across screens. Use this
-   * for world scroll + rival placement, NOT for gameplay logic.
+   * Forward progress: last snapshot plus the same elapsed time applied to every
+   * runner, so the road is 60fps-smooth and the gap matches on both screens.
    */
   distance: number;
   /** Predicted airborne-until race time (ms). */
@@ -74,11 +80,19 @@ export interface SelfRenderState {
   sliding: boolean;
   stalled: boolean;
   boosted: boolean;
+  eatProtected: boolean;
+  blackrock: boolean;
+  barriersOpen: boolean;
+  flight: boolean;
+  hellMode: boolean;
+  slowed: boolean;
+  flashlight: boolean;
 }
 
 export interface AuthoritativeRaceCallbacks {
   onAbility?: (event: AbilityMessage) => void;
   onElimination?: (event: EliminationMessage) => void;
+  onDilemma?: (event: DilemmaMessage) => void;
   onFinal?: (event: FinalMessage) => void;
   onError?: (error: unknown) => void;
   onLeave?: (code: number) => void;
@@ -91,8 +105,8 @@ export class AuthoritativeRaceClient {
 
   private selfUserId: string | null = null;
   private latest: SnapshotMessage | null = null;
-  /** Local clock minus server clock. */
-  private clockOffsetMs = 0;
+  /** Local clock minus server clock (smoothed). Null before the first snapshot. */
+  private clockOffsetMs: number | null = null;
 
   constructor(serverUrl?: string) {
     this.connection = new RaceConnection(serverUrl);
@@ -123,6 +137,7 @@ export class AuthoritativeRaceClient {
         onSnapshot: (snapshot) => this.ingestSnapshot(snapshot),
         onAbility: callbacks.onAbility,
         onElimination: callbacks.onElimination,
+        onDilemma: callbacks.onDilemma,
         onFinal: callbacks.onFinal,
         onError: callbacks.onError,
         onLeave: callbacks.onLeave,
@@ -174,22 +189,34 @@ export class AuthoritativeRaceClient {
     this.connection.sendInput(input);
   }
 
+  /** Sends a Prisoner's Dilemma choice for an active encounter. */
+  dilemmaChoice(encounterId: string, choice: 'cooperate' | 'eat'): void {
+    const seq = this.predictor.allocateSeq();
+    const input = {
+      type: 'dilemma' as const,
+      encounterId,
+      choice,
+      seq,
+      clientTimeMs: Date.now(),
+    };
+    this.connection.sendInput(input);
+  }
+
   // ---- Rendering -----------------------------------------------------------
 
   /** Builds the render-ready state for the current frame. Call every frame. */
   getRenderState(): RaceRenderState {
     const latest = this.latest;
     const phase: RacePhaseWire = latest?.phase ?? 'waiting';
-    const startsAtMs = latest ? latest.startsAtMs + this.clockOffsetMs : 0;
+    const offset = this.clockOffsetMs ?? 0;
+    const startsAtMs = latest ? latest.startsAtMs + offset : 0;
 
     return {
       phase,
       startsAtMs,
       raceMs: this.raceMs(),
       self: this.buildSelf(),
-      remotePlayers: this.selfUserId
-        ? this.interpolator.interpolateRemotePlayers(this.selfUserId)
-        : [],
+      remotePlayers: this.buildRemotes(),
       hazards: latest?.hazards ?? [],
       dividersOpen: latest?.dividersOpen ?? [true, true],
     };
@@ -197,7 +224,7 @@ export class AuthoritativeRaceClient {
 
   /** The current race time in ms (server clock), 0 before start. */
   raceMs(): number {
-    if (!this.latest) {
+    if (!this.latest || this.clockOffsetMs === null) {
       return 0;
     }
     const serverNow = Date.now() - this.clockOffsetMs;
@@ -209,13 +236,18 @@ export class AuthoritativeRaceClient {
     this.predictor.reset();
     this.interpolator.reset();
     this.latest = null;
+    this.clockOffsetMs = null;
   }
 
   // ---- Internals -----------------------------------------------------------
 
   private ingestSnapshot(snapshot: SnapshotMessage): void {
     this.latest = snapshot;
-    this.clockOffsetMs = Date.now() - snapshot.serverTimeMs;
+    this.clockOffsetMs = smoothClockOffset(
+      this.clockOffsetMs,
+      Date.now() - snapshot.serverTimeMs,
+    );
+    this.interpolator.setClockOffset(this.clockOffsetMs);
     this.interpolator.push(snapshot);
 
     // Reconcile the local player against the authoritative self state.
@@ -225,6 +257,43 @@ export class AuthoritativeRaceClient {
         this.predictor.reconcile(self, this.raceMs());
       }
     }
+  }
+
+  /** Seconds since the latest snapshot, shared by self and every rival. */
+  private snapshotDtSec(): number {
+    if (!this.latest || this.clockOffsetMs === null) {
+      return 0;
+    }
+    return snapshotAgeSec(Date.now() - this.clockOffsetMs, this.latest.serverTimeMs);
+  }
+
+  private renderDistance(player: {
+    distance: number;
+    died?: boolean;
+    finished?: boolean;
+    stalled?: boolean;
+    sliding?: boolean;
+    boosted?: boolean;
+    slowed?: boolean;
+  }): number {
+    return extrapolateDistance(
+      player.distance,
+      speedMultiplierFromSnapshot(player),
+      this.snapshotDtSec(),
+    );
+  }
+
+  private buildRemotes(): InterpolatedPlayer[] {
+    if (!this.selfUserId) {
+      return [];
+    }
+    return this.interpolator.interpolateRemotePlayers(this.selfUserId).map((remote) => {
+      const raw = this.latest?.players.find((player) => player.userId === remote.userId);
+      if (!raw) {
+        return remote;
+      }
+      return { ...remote, distance: this.renderDistance(raw) };
+    });
   }
 
   /** Merges predicted position with authoritative status for the local runner. */
@@ -237,11 +306,6 @@ export class AuthoritativeRaceClient {
       return null;
     }
     const predicted = this.predictor.getPredicted();
-    // Sample our own distance at the SAME delayed render clock as rivals so the
-    // gap between runners matches on both screens. Falls back to the latest
-    // authoritative value before the buffer has two snapshots.
-    const renderDistance =
-      this.interpolator.sampleDistance(this.selfUserId) ?? authoritative.distance;
     return {
       userId: authoritative.userId,
       role: authoritative.role,
@@ -249,14 +313,20 @@ export class AuthoritativeRaceClient {
       lane: predicted?.lane ?? authoritative.lane,
       x: predicted?.x ?? authoritative.x,
       jumpUntilMs: predicted?.jumpUntilMs ?? authoritative.jumpUntilMs,
-      // Distance is render-clock aligned (see field doc); status stays authoritative.
-      distance: renderDistance,
+      distance: this.renderDistance(authoritative),
       died: authoritative.died,
       finished: authoritative.finished,
       abilities: authoritative.abilities,
       sliding: authoritative.sliding ?? false,
       stalled: authoritative.stalled ?? false,
       boosted: authoritative.boosted ?? false,
+      eatProtected: authoritative.eatProtected ?? false,
+      blackrock: authoritative.blackrock ?? false,
+      barriersOpen: authoritative.barriersOpen ?? false,
+      flight: authoritative.flight ?? false,
+      hellMode: authoritative.hellMode ?? false,
+      slowed: authoritative.slowed ?? false,
+      flashlight: authoritative.flashlight ?? false,
     };
   }
 }
@@ -268,6 +338,7 @@ export type {
   PlayerSnapshotDto,
   HazardSnapshotDto,
   AbilityMessage,
+  DilemmaMessage,
   EliminationMessage,
   FinalMessage,
 } from './protocol';

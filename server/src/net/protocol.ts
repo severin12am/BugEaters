@@ -26,6 +26,8 @@ export const CHANNEL = {
   Ability: 'ability',
   /** Server -> client: a runner was eliminated (eat or targeted ability). */
   Elimination: 'elimination',
+  /** Server -> client: Prisoner's Dilemma start / resolve. */
+  Dilemma: 'dilemma',
   /** Server -> client: the race is over, with sealed standings. */
   Final: 'final',
 } as const;
@@ -72,6 +74,13 @@ export interface PlayerSnapshotDto {
   readonly stalled?: boolean;
   /** True while a `speed-up` ability boost is active. */
   readonly boosted?: boolean;
+  readonly eatProtected?: boolean;
+  readonly blackrock?: boolean;
+  readonly barriersOpen?: boolean;
+  readonly flight?: boolean;
+  readonly hellMode?: boolean;
+  readonly slowed?: boolean;
+  readonly flashlight?: boolean;
 }
 
 /** A single hazard within a snapshot. */
@@ -83,6 +92,8 @@ export interface HazardSnapshotDto {
   readonly open?: boolean;
   readonly angle?: number;
   readonly abilityId?: string;
+  /** Player ids that have already resolved this hazard (e.g. collected a pickup). */
+  readonly resolvedBy?: readonly string[];
 }
 
 /**
@@ -114,14 +125,28 @@ export interface AbilityMessage {
   readonly raceMs: number;
   /** Ids eliminated by this activation, if any. */
   readonly eliminatedIds?: string[];
+  readonly placedHazardId?: number;
 }
 
-/** Broadcast when a runner is eliminated (eat or targeted ability). */
+/** Broadcast when a runner is eliminated (eat, ability, or dilemma). */
 export interface EliminationMessage {
   readonly targetId: string;
   readonly actorId: string | null;
   readonly raceMs: number;
-  readonly cause: 'eat' | 'ability';
+  readonly cause: 'eat' | 'ability' | 'dilemma';
+}
+
+/** Broadcast for Prisoner's Dilemma encounters. */
+export interface DilemmaMessage {
+  readonly type: 'start' | 'resolve';
+  readonly encounterId: string;
+  readonly raceMs: number;
+  readonly aId: string;
+  readonly bId: string;
+  readonly deadlineRaceMs?: number;
+  readonly outcome?: string;
+  readonly diedIds?: string[];
+  readonly boostedIds?: string[];
 }
 
 /** Broadcast once when the race ends. */

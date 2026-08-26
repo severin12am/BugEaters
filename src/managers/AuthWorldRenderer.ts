@@ -47,11 +47,29 @@ export class AuthWorldRenderer {
    *
    * Call every frame with the local player's authoritative (smoothed) distance.
    */
-  render(hazards: HazardSnapshotDto[], selfDistance: number): void {
+  /**
+   * @param selfDistance server race distance (logical px). Converted with {@link ux}
+   *   so phone DPR matches desktop — without this, hazards pop in at your feet on retina.
+   * @param selfUserId when set, hide pickups this player already collected on the server.
+   */
+  render(hazards: HazardSnapshotDto[], selfDistance: number, selfUserId?: string | null): void {
     const present = new Set<number>();
     for (const hazard of hazards) {
+      // Per-player pickup resolve: keep the prop in the world for others, hide for collector.
+      if (
+        hazard.kind === 'pickup' &&
+        selfUserId &&
+        hazard.resolvedBy?.includes(selfUserId)
+      ) {
+        const existing = this.sprites.get(hazard.id);
+        if (existing) {
+          existing.setVisible(false);
+        }
+        continue;
+      }
       present.add(hazard.id);
-      const screenY = this.groundY - (hazard.worldY - selfDistance);
+      // Server coords are logical; screen space is DPR-scaled.
+      const screenY = this.groundY - ux(hazard.worldY - selfDistance);
       // Skip drawing hazards well off-screen (still tracked, just not shown).
       if (screenY < -ux(120) || screenY > GAME_HEIGHT + ux(120)) {
         this.sprites.get(hazard.id)?.setVisible(false);
@@ -88,21 +106,36 @@ export class AuthWorldRenderer {
       displayH = ux(cfg.puddleDisplayHeightMin * 1.6);
       depth = DEPTH_PUDDLE;
     } else if (hazard.kind === 'manhole') {
+      // Match ObstacleManager.spawnManhole exactly — scale from the painted disc
+      // diameter (manholeSourceDiameterPx), NOT the full 500×500 texture height.
+      // Using sprite.height made auth manholes ~2.5× too small.
       textureKey = hazard.open ? PROP_TEXTURE_KEYS.manholeOpen : PROP_TEXTURE_KEYS.manholeClosed;
       displayH = ux(cfg.manholeDisplayHeight * cfg.manholeSizeMultiplier);
       depth = DEPTH_MANHOLE;
-      origin = [0.5, 0.5];
+      const originCfg = hazard.open ? cfg.manholeOpening : cfg.manholeClosedOrigin;
+      origin = [originCfg.originXFraction, originCfg.originYFraction];
     } else if (hazard.kind === 'pickup') {
       textureKey = this.pickupTexture(hazard.abilityId);
       displayH = ux(TUNING.abilities.displayHeight);
       depth = DEPTH_PICKUP;
+    } else if (hazard.kind === 'passport') {
+      textureKey = PROP_TEXTURE_KEYS.passport;
+      displayH = ux(34);
+      depth = DEPTH_TRASH;
+    } else if (hazard.kind === 'straw') {
+      textureKey = PROP_TEXTURE_KEYS.paperStraw;
+      displayH = ux(28);
+      depth = DEPTH_TRASH;
     }
 
     const sprite = this.scene.add
       .image(0, 0, textureKey)
       .setOrigin(origin[0], origin[1])
       .setDepth(depth);
-    if (sprite.height > 0) {
+    if (hazard.kind === 'manhole') {
+      const scale = displayH / TUNING.obstacles.manholeSourceDiameterPx;
+      sprite.setScale(scale);
+    } else if (sprite.height > 0) {
       sprite.setScale(displayH / sprite.height);
     } else {
       sprite.setDisplaySize(displayH, displayH);

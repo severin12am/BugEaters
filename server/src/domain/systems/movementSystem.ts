@@ -5,6 +5,7 @@
  */
 import type { RaceConfig } from '../../config/raceConfig.js';
 import type { MoveInput, JumpInput, PlayerState, WorldState } from '../types.js';
+import { hasBarriersForcedOpen } from './abilitySystem.js';
 import { boundaryCrossed } from './dividerSystem.js';
 
 /** Horizontal center (world X, px) of a given sub-lane. */
@@ -24,7 +25,13 @@ export function laneCenterX(lane: number, config: RaceConfig): number {
  *
  * `world.dividersOpen` must be up to date for the current tick before this runs.
  */
-export function applyMove(player: PlayerState, input: MoveInput, world: WorldState, config: RaceConfig): void {
+export function applyMove(
+  player: PlayerState,
+  input: MoveInput,
+  world: WorldState,
+  config: RaceConfig,
+  raceMs = 0,
+): void {
   const delta = input.direction === 'left' ? -1 : 1;
   const target = player.lane + delta;
 
@@ -37,9 +44,13 @@ export function applyMove(player: PlayerState, input: MoveInput, world: WorldSta
     return;
   }
 
-  // Blocked by a closed main-lane divider → no movement.
+  // Blocked by a closed main-lane divider → no movement (unless OPENED BORDERS).
   const boundary = boundaryCrossed(player.lane, delta);
-  if (boundary !== null && !world.dividersOpen[boundary]) {
+  if (
+    boundary !== null &&
+    !world.dividersOpen[boundary] &&
+    !hasBarriersForcedOpen(player, raceMs)
+  ) {
     return;
   }
 

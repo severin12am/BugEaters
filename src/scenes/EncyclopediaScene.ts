@@ -16,6 +16,7 @@ import {
   createSectionGlyph,
   isDiagramId,
 } from '../ui/encyclopediaDiagrams';
+import { createGuideShotCard } from '../ui/encyclopediaShots';
 import {
   getAbilityGuideCards,
   getEncyclopediaSection,
@@ -25,7 +26,7 @@ import {
 
 const SCROLL_PAD_TOP = ux(12);
 const SCROLL_PAD_BOTTOM = ux(40);
-const INDEX_CARD_H = ux(76);
+const INDEX_CARD_H = ux(92);
 
 /**
  * In-game encyclopedia — visual sections + mono diagrams from `content/encyclopedia.md`.
@@ -38,12 +39,14 @@ export class EncyclopediaScene extends Phaser.Scene {
   private dragStartY = 0;
   private scrollStartY = 0;
   private dragging = false;
+  private returnScene = 'WeekHubScene';
 
   constructor() {
     super({ key: 'EncyclopediaScene' });
   }
 
-  create(data?: { sectionId?: string }): void {
+  create(data?: { sectionId?: string; from?: string }): void {
+    this.returnScene = data?.from ?? 'WeekHubScene';
     if (data?.sectionId) {
       const section = getEncyclopediaSection(data.sectionId);
       if (section) {
@@ -76,11 +79,11 @@ export class EncyclopediaScene extends Phaser.Scene {
     const panelW = contentWidth(20);
 
     const back = createMonoButton(this, pad + ux(4), getContentTopY(this, 36), '←', 'ghost', ux(48), ux(40));
-    bindButtonClick(back, () => this.scene.start('WeekHubScene'));
+    bindButtonClick(back, () => this.scene.start(this.returnScene));
 
     createMonoText(this, cx, getContentTopY(this, 36), 'GUIDE', 'label').setOrigin(0.5);
     createMonoText(this, cx, getContentTopY(this, 72), 'How BugEaters works', 'title').setOrigin(0.5);
-    createMonoText(this, cx, getContentTopY(this, 100), 'Schemes · short sections · swipe', 'caption').setOrigin(0.5);
+    createMonoText(this, cx, getContentTopY(this, 100), 'Photos · schemes · swipe', 'caption').setOrigin(0.5);
 
     const sections = getEncyclopediaSections();
     const listTop = getContentTopY(this, 128);
@@ -93,7 +96,7 @@ export class EncyclopediaScene extends Phaser.Scene {
     this.setupScroll(listTop, viewH, listContainer, listH, true);
 
     sections.forEach((section) => {
-      const preview = sectionPreview(section.body);
+      const preview = section.blurb || sectionPreview(section.body);
       const card = this.buildIndexCard(pad, y, panelW, section, preview);
       listContainer.add(card);
       y += INDEX_CARD_H + gap;
@@ -114,20 +117,21 @@ export class EncyclopediaScene extends Phaser.Scene {
 
     const textX = x + ux(64);
     const wrapW = width - ux(80);
-    const title = createMonoText(this, textX, y + ux(18), section.title, 'body', 0, 0)
-      .setOrigin(0, 0)
-      .setWordWrapWidth(wrapW);
-    // Keep title to one visual line
-    if (title.height > ux(22)) {
-      title.setText(truncateToWidth(section.title, title, wrapW));
-    }
+    const padY = ux(14);
+    const title = createMonoText(this, textX, y + padY, section.title, 'body', 0, 0)
+      .setOrigin(0, 0);
+    clampTextToLines(title, section.title, wrapW, 1);
 
-    const subtitle = createMonoText(this, textX, y + ux(42), preview, 'caption', 0, 0)
-      .setOrigin(0, 0)
-      .setWordWrapWidth(wrapW);
-    if (subtitle.height > ux(18)) {
-      subtitle.setText(truncateToWidth(preview, subtitle, wrapW));
-    }
+    const subtitle = createMonoText(
+      this,
+      textX,
+      y + padY + title.height + ux(6),
+      preview,
+      'caption',
+      0,
+      0,
+    ).setOrigin(0, 0);
+    clampTextToLines(subtitle, preview, wrapW, 2);
 
     const hit = this.add
       .rectangle(x + width / 2, y + INDEX_CARD_H / 2, width, INDEX_CARD_H, 0x000000, 0)
@@ -162,17 +166,14 @@ export class EncyclopediaScene extends Phaser.Scene {
     bindButtonClick(back, () => this.showIndex());
 
     const titleMaxW = panelW - ux(100);
-    const title = createMonoText(
-      this,
-      cx,
-      getContentTopY(this, 36),
-      section.title.toUpperCase(),
-      'label',
-    ).setOrigin(0.5);
-    title.setWordWrapWidth(titleMaxW);
-    if (title.width > titleMaxW) {
-      title.setText(truncateToWidth(section.title.toUpperCase(), title, titleMaxW));
-    }
+    const title = gameText(this, cx, getContentTopY(this, 36), section.title.toUpperCase(), {
+      fontFamily: MONO_CSS.fontDisplay,
+      fontSize: fontSize(16),
+      color: MONO_CSS.text,
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+    title.setWordWrapWidth(titleMaxW, true);
+    clampTextToLines(title, section.title.toUpperCase(), titleMaxW, 1);
 
     const bodyTop = getContentTopY(this, 76);
     const bodyBottom = getMenuBottomY(this, 28);
@@ -187,6 +188,26 @@ export class EncyclopediaScene extends Phaser.Scene {
 
       if (block.kind === 'spacer') {
         y += ux(block.gap);
+        continue;
+      }
+
+      if (block.kind === 'shot') {
+        const shot = createGuideShotCard(this, block.id, panelW, block.heading, block.caption);
+        if (shot) {
+          shot.container.setPosition(pad, y);
+          contentContainer.add(shot.container);
+          y += shot.height + ux(18);
+        } else {
+          const fallback = this.buildSectionCard(
+            pad,
+            y,
+            panelW,
+            block.heading ?? 'Photo',
+            block.caption,
+          );
+          contentContainer.add(fallback.container);
+          y += fallback.height + ux(14);
+        }
         continue;
       }
 
@@ -216,7 +237,7 @@ export class EncyclopediaScene extends Phaser.Scene {
       if (block.kind === 'para') {
         const t = createMonoText(this, contentX, y, block.text, 'body', 0, 0)
           .setOrigin(0, 0)
-          .setWordWrapWidth(wrapW);
+          .setWordWrapWidth(wrapW, true);
         contentContainer.add(t);
         y += t.height + ux(14);
       }
@@ -253,13 +274,14 @@ export class EncyclopediaScene extends Phaser.Scene {
 
     const title = gameText(this, x + inset, y + inset, heading.toUpperCase(), {
       fontFamily: MONO_CSS.fontDisplay,
-      fontSize: fontSize(12),
+      fontSize: fontSize(15),
       color: MONO_CSS.text,
       fontStyle: 'bold',
     })
       .setOrigin(0, 0)
-      .setWordWrapWidth(wrapW);
+      .setWordWrapWidth(wrapW, true);
 
+    clampTextToLines(title, heading.toUpperCase(), wrapW, 2);
     let innerH = title.height + ux(10);
     const rule = this.add
       .rectangle(x + inset, y + inset + innerH, Math.min(wrapW, ux(40)), ux(2), MONO.white, 0.5)
@@ -270,7 +292,7 @@ export class EncyclopediaScene extends Phaser.Scene {
     if (body) {
       para = createMonoText(this, x + inset, y + inset + innerH, body, 'body', 0, 0)
         .setOrigin(0, 0)
-        .setWordWrapWidth(wrapW);
+        .setWordWrapWidth(wrapW, true);
       innerH += para.height;
     }
 
@@ -299,24 +321,26 @@ export class EncyclopediaScene extends Phaser.Scene {
 
     const name = gameText(this, x + pad + iconBox + ux(12), y + pad, ability.name, {
       fontFamily: MONO_CSS.fontDisplay,
-      fontSize: fontSize(12),
+      fontSize: fontSize(15),
       color: MONO_CSS.text,
       fontStyle: 'bold',
     })
       .setOrigin(0, 0)
-      .setWordWrapWidth(textW);
+      .setWordWrapWidth(textW, true);
+
+    clampTextToLines(name, ability.name, textW, 2);
 
     const effect = createMonoText(
       this,
       x + pad + iconBox + ux(12),
       y + pad + name.height + ux(6),
       ability.effect,
-      'caption',
+      'body',
       0,
       0,
     )
       .setOrigin(0, 0)
-      .setWordWrapWidth(textW)
+      .setWordWrapWidth(textW, true)
       .setColor(MONO_CSS.textSecondary);
 
     const height = Math.max(iconBox + pad * 2, pad + name.height + ux(6) + effect.height + pad);
@@ -404,6 +428,7 @@ type GuideBlock =
   | { kind: 'para'; text: string }
   | { kind: 'heading'; text: string }
   | { kind: 'diagram'; id: string }
+  | { kind: 'shot'; id: string; heading: string | null; caption: string | null }
   | { kind: 'spacer'; gap: number };
 
 function parseGuideBlocks(body: string): GuideBlock[] {
@@ -424,7 +449,44 @@ function parseGuideBlocks(body: string): GuideBlock[] {
       const id = trimmed.slice(':::diagram '.length).trim();
       blocks.push({ kind: 'diagram', id });
       i += 1;
-      // skip optional blank after fence
+      continue;
+    }
+
+    if (trimmed.startsWith(':::shot ')) {
+      const rest = trimmed.slice(':::shot '.length).trim();
+      const pipe = rest.indexOf('|');
+      const id = (pipe === -1 ? rest : rest.slice(0, pipe)).trim();
+      const heading = pipe === -1 ? '' : rest.slice(pipe + 1).trim();
+      i += 1;
+      while (i < lines.length && !lines[i].trim()) {
+        i += 1;
+      }
+      const captionLines: string[] = [];
+      while (i < lines.length) {
+        const next = lines[i].trim();
+        if (
+          !next ||
+          next.startsWith(':::') ||
+          next.startsWith('### ') ||
+          next.startsWith('## ') ||
+          next === '---'
+        ) {
+          break;
+        }
+        captionLines.push(next);
+        i += 1;
+      }
+      const caption = captionLines
+        .join(' ')
+        .replace(/\*\*/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      blocks.push({
+        kind: 'shot',
+        id,
+        heading: heading || null,
+        caption: caption || null,
+      });
       continue;
     }
 
@@ -486,6 +548,7 @@ function parseGuideBlocks(body: string): GuideBlock[] {
 function sectionPreview(body: string): string {
   const plain = body
     .replace(/:::diagram[^\n]*/g, '')
+    .replace(/:::shot[^\n]*/g, '')
     .replace(/```[\s\S]*?```/g, '')
     .replace(/\*\*/g, '')
     .replace(/^#+\s+/gm, '')
@@ -493,27 +556,60 @@ function sectionPreview(body: string): string {
     .replace(/\|/g, ' ')
     .replace(/\n+/g, ' ')
     .trim();
-  return plain.length > 64 ? `${plain.slice(0, 61)}…` : plain;
+  return plain.length > 72 ? `${plain.slice(0, 69)}…` : plain;
 }
 
-function truncateToWidth(text: string, sample: Phaser.GameObjects.Text, maxW: number): string {
-  if (sample.width <= maxW) {
-    return text;
+/**
+ * Phaser's `width` after word-wrap is the wrap box, not the line — so ellipsis
+ * based on width never fires and chapter copy spills out of the card.
+ * Fit by line count instead, then re-apply wrap.
+ */
+function clampTextToLines(
+  sample: Phaser.GameObjects.Text,
+  text: string,
+  maxW: number,
+  maxLines: number,
+): void {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (!clean) {
+    sample.setText('');
+    return;
   }
+
+  sample.setWordWrapWidth(0, false);
+  sample.setText('Ag');
+  const lineH = Math.max(1, sample.height);
+  const maxH = lineH * maxLines + 1;
+
+  const apply = (value: string): void => {
+    if (maxLines <= 1) {
+      sample.setWordWrapWidth(0, false);
+      sample.setText(value);
+      return;
+    }
+    sample.setWordWrapWidth(maxW, true);
+    sample.setText(value);
+  };
+
+  apply(clean);
+  if (sample.height <= maxH && (maxLines > 1 || sample.width <= maxW)) {
+    return;
+  }
+
   let lo = 0;
-  let hi = text.length;
-  let best = text;
+  let hi = clean.length;
+  let best = '…';
   while (lo <= hi) {
     const mid = Math.floor((lo + hi) / 2);
-    const candidate = `${text.slice(0, mid).trimEnd()}…`;
-    sample.setText(candidate);
-    if (sample.width <= maxW) {
+    const candidate = `${clean.slice(0, Math.max(1, mid)).trimEnd()}…`;
+    apply(candidate);
+    const fits = sample.height <= maxH && (maxLines > 1 || sample.width <= maxW);
+    if (fits) {
       best = candidate;
       lo = mid + 1;
     } else {
       hi = mid - 1;
     }
   }
-  sample.setText(best);
-  return best;
+  apply(best);
 }

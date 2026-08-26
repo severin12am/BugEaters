@@ -23,6 +23,7 @@ Copy `.env.example` → `.env.local` and set Supabase vars for multiplayer. With
 
 | Doc | What it covers |
 |-----|----------------|
+| [**docs/MODEL_AUDIT_GUIDE.md**](docs/MODEL_AUDIT_GUIDE.md) | **Start here for AI/code audits** — dual paths, symptom→file, server map |
 | [**docs/README.md**](docs/README.md) | Full doc hierarchy |
 | [**docs/CODEBASE.md**](docs/CODEBASE.md) | **Every source file — what it does** |
 | [**docs/RACE_MECHANICS.md**](docs/RACE_MECHANICS.md) | Gameplay as implemented today |

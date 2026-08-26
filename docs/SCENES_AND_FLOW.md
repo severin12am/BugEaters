@@ -20,7 +20,7 @@ All Phaser scenes are registered in `src/config/gameConfig.ts`. Registry keys li
 | Blocked | `BlockedStateScene` | Missing pass/wallet |
 | Sunday Finale | `SundayFinaleScene` | Sunday framing |
 | Champion Dashboard | `ChampionDashboardScene` | Billboard rights mock |
-| Encyclopedia | `EncyclopediaScene` | Player guide (`content/encyclopedia.md`) |
+| Encyclopedia | `EncyclopediaScene` | Player guide (`content/encyclopedia.md` + `:::shot` photos) |
 
 ---
 
@@ -103,7 +103,7 @@ BootScene (?abilityLab=1) → GameScene (lab mode, no Week Hub)
 - Creates `RoomSession`, calls `join-room` Edge Function.
 - Countdown to `starts_at`; presence roster.
 - Pass burn modal (Tue–Sun mock); role reveal.
-- On failure: may fall back to solo (known gap vs tournament spec).
+- On failure: may fall back to Testing (authoritative /dev/ticket).
 - → `GameScene` with session + members in registry.
 
 ### GameScene

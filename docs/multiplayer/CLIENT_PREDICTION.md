@@ -16,7 +16,8 @@ src/net/authoritative/
 ├── clientRaceConfig.ts       # lane geometry (must match the server)
 ├── RaceConnection.ts         # transport: ticket fetch + Colyseus join + send
 ├── InputPredictor.ts         # local prediction + reconciliation (self only)
-├── SnapshotInterpolator.ts   # smooth interpolation (remote players)
+├── SnapshotInterpolator.ts   # smooth interpolation (remote lane / x)
+├── distanceExtrapolator.ts   # 60fps forward motion between snapshots
 └── AuthoritativeRaceClient.ts# the FACADE your scene uses
 ```
 
@@ -56,13 +57,18 @@ server's truth — any misprediction is corrected on the very next snapshot.
 
 ### 3. Interpolation for remote players (`SnapshotInterpolator`)
 
-Snapshots arrive ~20Hz but we render at 60fps. Drawing remote runners at the
-latest snapshot each frame would stutter. Instead we render remote players a
-small, constant time in the past (`~100ms`) and linearly interpolate between the
-two snapshots that straddle that render time. Smooth motion for a tiny, fixed
-latency — the right trade-off on Telegram WebView.
+Lane and X are interpolated from the last few snapshots so a rival tap does not
+pop. Forward `distance` is **not** drawn from the raw 20Hz snapshot — that
+stair-steps the road for every player.
 
-Only *remote* players are interpolated; the *local* player is predicted.
+### 4. Forward motion (`distanceExtrapolator`)
+
+Every runner (you and rivals) uses the **same** last snapshot plus the **same**
+elapsed time, at the server's speed rules (stall / slide / boost / slow). The
+clock offset is smoothed so one late packet cannot yank the world. That keeps
+the road at 60fps and the gap identical on both screens.
+
+Lane taps stay predicted (`InputPredictor`). Only forward scroll is extrapolated.
 
 ---
 

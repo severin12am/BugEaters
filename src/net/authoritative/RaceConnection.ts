@@ -19,6 +19,7 @@ import {
 import {
   CHANNEL,
   type AbilityMessage,
+  type DilemmaMessage,
   type EliminationMessage,
   type FinalMessage,
   type PlayerInput,
@@ -47,6 +48,7 @@ export interface RaceConnectionHandlers {
   onSnapshot: (snapshot: SnapshotMessage) => void;
   onAbility?: (event: AbilityMessage) => void;
   onElimination?: (event: EliminationMessage) => void;
+  onDilemma?: (event: DilemmaMessage) => void;
   onFinal?: (event: FinalMessage) => void;
   onError?: (error: unknown) => void;
   onLeave?: (code: number) => void;
@@ -123,6 +125,8 @@ export class RaceConnection {
     };
 
     const client = new Client(this.serverUrl);
+    // roomId here must be the ticket's claims.roomId (the wave), not the
+    // playtest lobby key, or joinOrCreate can attach to a leftover live race.
     this.room = await client.joinOrCreate('race', {
       token: ticket.token,
       roomKey: roomId,
@@ -134,6 +138,9 @@ export class RaceConnection {
     }
     if (handlers.onElimination) {
       this.room.onMessage(CHANNEL.Elimination, handlers.onElimination);
+    }
+    if (handlers.onDilemma) {
+      this.room.onMessage(CHANNEL.Dilemma, handlers.onDilemma);
     }
     if (handlers.onFinal) {
       this.room.onMessage(CHANNEL.Final, handlers.onFinal);

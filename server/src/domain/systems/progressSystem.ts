@@ -8,20 +8,18 @@
  *
  *   - stalled by trash  → 0×   (no forward progress)
  *   - puddle slide       → 1.5× (solo `puddleSlideBoostMultiplier`)
- *   - speed-up ability   → 1.4×
+ *   - speed-up ability   → 1.5× (solo CBDC)
+ *   - slowed by rival    → 0.34× (TAXATION)
  *   - otherwise          → 1×   (tracks the world scroll)
- *
- * This is what makes rivals spread out on screen and gives standings a real,
- * skill-based tiebreak instead of collapsing to player id.
  */
 import type { PlayerState, WorldState } from '../types.js';
 import type { SimulationContext } from './context.js';
+import { isSlowedByRival, NPC_SLOW_MULTIPLIER, SPEED_UP_MULTIPLIER } from './abilitySystem.js';
 
 const PUDDLE_SLIDE_MULTIPLIER = 1.5;
-const SPEED_UP_MULTIPLIER = 1.4;
 
 /** The current forward-speed multiplier for a runner from its active effects. */
-export function speedMultiplier(player: PlayerState, raceMs: number): number {
+export function speedMultiplier(player: PlayerState, world: WorldState, raceMs: number): number {
   // Stuck behind a trash bin — no forward progress until a lane change clears it.
   if (player.stuck) {
     return 0;
@@ -36,6 +34,9 @@ export function speedMultiplier(player: PlayerState, raceMs: number): number {
   if (raceMs < player.boostUntilMs) {
     multiplier *= SPEED_UP_MULTIPLIER;
   }
+  if (isSlowedByRival(player, world, raceMs)) {
+    multiplier *= NPC_SLOW_MULTIPLIER;
+  }
   return multiplier;
 }
 
@@ -46,7 +47,8 @@ export function advanceProgress(world: WorldState, ctx: SimulationContext): void
     if (player.died || player.finished) {
       continue;
     }
-    player.distance += perMs * ctx.dtMs * speedMultiplier(player, ctx.raceMs);
+    player.prevDistance = player.distance;
+    player.distance += perMs * ctx.dtMs * speedMultiplier(player, world, ctx.raceMs);
   }
 }
 

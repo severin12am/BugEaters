@@ -28,13 +28,20 @@ export class AudioManager {
   stopRace(): void {
     this.active = false;
     this.lampSound?.stop();
-    // `lampSound` can be replaced during a Phaser scene restart. Stop every
-    // instance by key so the buzz never survives death/end-screen teardown.
+    // Kill lamp + any one-shot phrases / footsteps so they never leak into menus.
     this.scene.sound.stopByKey(AUDIO_KEYS.lampBuzz);
+    for (const key of PHRASE_AUDIO_KEYS) {
+      this.scene.sound.stopByKey(key);
+    }
+    for (const key of Object.values(STEP_AUDIO_KEY)) {
+      this.scene.sound.stopByKey(key);
+    }
   }
 
   destroy(): void {
     this.stopRace();
+    // Belt-and-suspenders: silence everything attached to this game's sound manager.
+    this.scene.sound.stopAll();
     this.lampSound?.destroy();
     this.lampSound = null;
   }
@@ -124,6 +131,6 @@ export class AudioManager {
   }
 
   private canPlaySfx(): boolean {
-    return !this.muted && !this.scene.sound.locked;
+    return this.active && !this.muted && !this.scene.sound.locked;
   }
 }

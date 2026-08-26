@@ -24,11 +24,12 @@ import { REGISTRY_KEYS, type AuthLocalRaceOptions } from './BootScene';
 import {
   isRaceDevMode,
   isRaceServerConfigured,
+  PLAYTEST_LOBBY_ROOM_ID,
   raceServerHttpBase,
 } from '../net/authoritative/env';
 
 /**
- * Playtest entry — Solo practice first, then optional sandbox week / day.
+ * Playtest entry — Testing (authoritative race) plus optional sandbox week / day.
  */
 export class DevSessionScene extends Phaser.Scene {
   private choice: DevSessionChoice = resetDevSessionChoice();
@@ -46,18 +47,8 @@ export class DevSessionScene extends Phaser.Scene {
     this.render();
   }
 
-  private startSoloPractice(): void {
-    this.registry.set(REGISTRY_KEYS.roomSession, null);
-    this.registry.set(REGISTRY_KEYS.roomMembers, null);
-    this.registry.set(REGISTRY_KEYS.authLocalRace, null);
-    this.registry.set(REGISTRY_KEYS.soloPractice, true);
-    this.registry.set(REGISTRY_KEYS.selectedCharacter, CharacterType.Human);
-    this.registry.set(REGISTRY_KEYS.passBurnConfirmed, true);
-    this.scene.start('GameScene');
-  }
-
   /**
-   * Authoritative local multiplayer via the Colyseus race server (/dev/ticket).
+   * Authoritative race via the Colyseus race server (/dev/ticket).
    * Mints the ticket FIRST so species + lane are known before GameScene builds
    * the local runner (Bug left / Human middle / Klaus right).
    */
@@ -72,7 +63,7 @@ export class DevSessionScene extends Phaser.Scene {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          roomId: 'local-practice',
+          roomId: PLAYTEST_LOBBY_ROOM_ID,
           userId,
           maxPlayers: 6,
           // No role — server assigns next free seat: Bug → Human → Klaus.
@@ -84,6 +75,7 @@ export class DevSessionScene extends Phaser.Scene {
       const data = (await response.json()) as {
         token: string;
         claims: {
+          roomId: string;
           userId: string;
           role: 'bug' | 'human' | 'klaus';
           globalSubLane: number;
@@ -105,7 +97,7 @@ export class DevSessionScene extends Phaser.Scene {
       this.registry.set(REGISTRY_KEYS.selectedCharacter, character);
       this.registry.set(REGISTRY_KEYS.passBurnConfirmed, true);
       this.registry.set(REGISTRY_KEYS.authLocalRace, {
-        roomId: 'local-practice',
+        roomId: data.claims.roomId || PLAYTEST_LOBBY_ROOM_ID,
         userId: data.claims.userId,
         role: data.claims.role,
         globalSubLane: data.claims.globalSubLane,
@@ -128,54 +120,50 @@ export class DevSessionScene extends Phaser.Scene {
     const panelW = contentWidth(20);
     const authReady = isRaceServerConfigured && isRaceDevMode;
 
+    const guide = createMonoButton(
+      this,
+      pad + ux(40),
+      getContentTopY(this, 36),
+      'Guide',
+      'ghost',
+      ux(80),
+      ux(40),
+    );
+    bindButtonClick(guide, () =>
+      this.scene.start('EncyclopediaScene', { sectionId: 'first-steps', from: 'DevSessionScene' }),
+    );
+
     createMonoText(this, cx, getContentTopY(this, 32), 'BUG EATERS', 'display').setOrigin(0.5);
     createMonoText(this, cx, getContentTopY(this, 72), 'Playtest', 'caption').setOrigin(0.5);
 
-    const solo = createMonoButton(
-      this,
-      cx,
-      getContentTopY(this, 118),
-      'Solo practice',
-      'primary',
-      panelW,
-    );
-    bindButtonClick(solo, () => this.startSoloPractice());
-    createMonoText(
-      this,
-      cx,
-      getContentTopY(this, 152),
-      'Offline race — no lobby, no week',
-      'caption',
-    ).setOrigin(0.5);
-
     let tournamentTop = 188;
     if (authReady) {
-      const multi = createMonoButton(
+      const testing = createMonoButton(
         this,
         cx,
-        getContentTopY(this, 186),
-        'Local multiplayer race',
-        'secondary',
+        getContentTopY(this, 118),
+        'Testing',
+        'primary',
         panelW,
       );
-      bindButtonClick(multi, () => void this.startLocalAuthRace());
+      bindButtonClick(testing, () => void this.startLocalAuthRace());
       createMonoText(
         this,
         cx,
-        getContentTopY(this, 220),
-        'Bug left · Human mid · Klaus right · 2nd tab joins',
+        getContentTopY(this, 152),
+        'Two phones · 15s wait · Bug then Human',
         'caption',
       ).setOrigin(0.5);
-      tournamentTop = 248;
+      tournamentTop = 188;
     } else {
       createMonoText(
         this,
         cx,
-        getContentTopY(this, 178),
+        getContentTopY(this, 118),
         'Race server offline — start npm run race-server',
         'caption',
       ).setOrigin(0.5);
-      tournamentTop = 210;
+      tournamentTop = 160;
     }
 
     createMonoDivider(this, pad, getContentTopY(this, tournamentTop), panelW);

@@ -12,14 +12,18 @@ import type { PlayerInput, PlayerState, WorldState } from '../src/domain/types.j
 import { RacePhase } from '../src/domain/types.js';
 import {
   advanceProgress,
+  applyAbility,
+  applyDilemmaChoice,
   boundaryCrossed,
   canEat,
   computeDividers,
   computeStandings,
   isDividerOpenAt,
+  PICKUP_ABILITY_POOL,
   resolveEat,
   resolveHazards,
   speedMultiplier,
+  tickDilemmas,
   type SimulationContext,
 } from '../src/domain/systems/index.js';
 
@@ -39,6 +43,7 @@ function makePlayer(overrides: Partial<PlayerState> = {}): PlayerState {
     x: 0,
     jumpUntilMs: 0,
     distance: overrides.distance ?? 0,
+    prevDistance: overrides.prevDistance ?? overrides.distance ?? 0,
     died: false,
     finished: false,
     finishTimeMs: null,
@@ -48,6 +53,15 @@ function makePlayer(overrides: Partial<PlayerState> = {}): PlayerState {
     stallUntilMs: 0,
     stuck: false,
     boostUntilMs: 0,
+    eatProtectedUntilMs: 0,
+    blackrockUntilMs: 0,
+    barriersOpenUntilMs: 0,
+    flightUntilMs: 0,
+    hellModeUntilMs: 0,
+    slowOthersUntilMs: 0,
+    flashlightUntilMs: 0,
+    armedAbilityId: null,
+    armedUntilMs: 0,
     ...overrides,
   };
 }
@@ -228,6 +242,7 @@ test('puddle grants a slide boost; trash sticks a runner (even airborne)', () =>
   const trashRunner = makePlayer({ id: 'tr', lane: 3, distance: 1000, jumpUntilMs: 0 });
   resolveHazards(trashRunner, world, makeCtx(2000));
   assert.equal(trashRunner.stuck, true, 'trash should stick the runner');
+  assert.equal(trashRunner.distance, 990, 'stuck runner stands tight in front of the bin');
 
   // A bin cannot be jumped — you must go around it, so airborne still sticks.
   const jumper = makePlayer({ id: 'jp', lane: 3, distance: 1000, jumpUntilMs: 5000 });
@@ -254,7 +269,7 @@ test('a stuck runner makes no progress until it changes lane', () => {
 });
 
 test('stuck zeroes the speed multiplier', () => {
-  assert.equal(speedMultiplier(makePlayer({ stuck: true }), 1000), 0);
+  assert.equal(speedMultiplier(makePlayer({ stuck: true }), emptyWorld(), 1000), 0);
 });
 
 test('pickup grants an ability (capped at 3)', () => {
@@ -271,11 +286,12 @@ test('pickup grants an ability (capped at 3)', () => {
 // ---- Progress -------------------------------------------------------------
 
 test('speed multiplier reflects active effects', () => {
+  const world = emptyWorld();
   const base = makePlayer();
-  assert.equal(speedMultiplier(base, 1000), 1);
-  assert.equal(speedMultiplier(makePlayer({ stallUntilMs: 2000 }), 1000), 0);
-  assert.equal(speedMultiplier(makePlayer({ slideUntilMs: 2000 }), 1000), 1.5);
-  assert.ok(Math.abs(speedMultiplier(makePlayer({ boostUntilMs: 2000 }), 1000) - 1.4) < 1e-9);
+  assert.equal(speedMultiplier(base, world, 1000), 1);
+  assert.equal(speedMultiplier(makePlayer({ stallUntilMs: 2000 }), world, 1000), 0);
+  assert.equal(speedMultiplier(makePlayer({ slideUntilMs: 2000 }), world, 1000), 1.5);
+  assert.ok(Math.abs(speedMultiplier(makePlayer({ boostUntilMs: 2000 }), world, 1000) - 1.5) < 1e-9);
 });
 
 test('a sliding runner out-distances a normal one over the same time', () => {
@@ -299,24 +315,183 @@ test('food chain: bug eats klaus, not human', () => {
   assert.equal(canEat('bug', 'human'), false);
 });
 
-test('eat succeeds only when adjacent + valid prey', () => {
+test('eat succeeds only when nearby + valid prey (not same-lane-only)', () => {
   const world = emptyWorld();
-  const bug = makePlayer({ id: 'bug', role: 'bug', lane: 4, distance: 1000 });
-  const klaus = makePlayer({ id: 'klaus', role: 'klaus', lane: 4, distance: 1010 });
-  const human = makePlayer({ id: 'human', role: 'human', lane: 4, distance: 1005 });
+  // Bug left / Klaus right of bug band — different sub-lanes, close in X.
+  const bug = makePlayer({ id: 'bug', role: 'bug', lane: 1, x: 80, distance: 1000 });
+  const klaus = makePlayer({ id: 'klaus', role: 'klaus', lane: 2, x: 100, distance: 1010 });
+  const human = makePlayer({ id: 'human', role: 'human', lane: 4, x: 200, distance: 1005 });
   world.players.set('bug', bug);
   world.players.set('klaus', klaus);
   world.players.set('human', human);
 
   // Wrong prey (bug cannot eat human).
   assert.equal(resolveEat(bug, { type: 'eat', targetId: 'human', seq: 1 }, world), null);
-  // Too far away.
+  // Too far forward.
   klaus.distance = 2000;
   assert.equal(resolveEat(bug, { type: 'eat', targetId: 'klaus', seq: 2 }, world), null);
-  // Adjacent + valid → kill.
+  // Nearby + valid → kill (even across sub-lanes).
   klaus.distance = 1010;
   assert.equal(resolveEat(bug, { type: 'eat', targetId: 'klaus', seq: 3 }, world), 'klaus');
   assert.equal(klaus.died, true);
+
+  // Human eats bug across main-lane contact range.
+  const bug2 = makePlayer({ id: 'bug2', role: 'bug', lane: 2, x: 120, distance: 2000 });
+  const human2 = makePlayer({ id: 'human2', role: 'human', lane: 3, x: 140, distance: 2005 });
+  world.players.set('bug2', bug2);
+  world.players.set('human2', human2);
+  assert.equal(resolveEat(human2, { type: 'eat', targetId: 'bug2', seq: 1 }, world), 'bug2');
+});
+
+// ---- Abilities + dilemma --------------------------------------------------
+
+test('pickup pool covers all 12 road abilities', () => {
+  assert.equal(PICKUP_ABILITY_POOL.length, 12);
+  assert.ok(PICKUP_ABILITY_POOL.includes('speed-up'));
+  assert.ok(PICKUP_ABILITY_POOL.includes('disable-barriers'));
+});
+
+test('speed-up and immortality apply timed flags', () => {
+  const world = emptyWorld();
+  const p = makePlayer({ abilities: ['speed-up', 'immortality'] });
+  world.players.set(p.id, p);
+  const ctx = makeCtx(1000);
+  assert.ok(applyAbility(p, { type: 'activate', abilityId: 'speed-up', seq: 1 }, world, ctx));
+  assert.ok(p.boostUntilMs > 1000);
+  assert.ok(applyAbility(p, { type: 'activate', abilityId: 'immortality', seq: 2 }, world, ctx));
+  assert.ok(p.eatProtectedUntilMs > 1000);
+});
+
+test('needle with aim eliminates a nearby rival', () => {
+  const world = emptyWorld();
+  const actor = makePlayer({ id: 'a', lane: 4, x: 200, abilities: ['needle-spawner'] });
+  const rival = makePlayer({ id: 'b', lane: 5, x: 220, distance: 1000 });
+  world.players.set('a', actor);
+  world.players.set('b', rival);
+  const event = applyAbility(
+    actor,
+    { type: 'activate', abilityId: 'needle-spawner', aimX: 220, seq: 1 },
+    world,
+    makeCtx(1000),
+  );
+  assert.ok(event);
+  assert.deepEqual(event!.eliminatedIds, ['b']);
+  assert.equal(rival.died, true);
+});
+
+test('shareholder blocks eats', () => {
+  const world = emptyWorld();
+  const bug = makePlayer({ id: 'bug', role: 'bug', lane: 4, distance: 1000 });
+  const klaus = makePlayer({
+    id: 'klaus',
+    role: 'klaus',
+    lane: 4,
+    distance: 1010,
+    eatProtectedUntilMs: 5000,
+  });
+  world.players.set('bug', bug);
+  world.players.set('klaus', klaus);
+  assert.equal(resolveEat(bug, { type: 'eat', targetId: 'klaus', seq: 1 }, world, makeCtx(1000)), null);
+});
+
+test('dilemma both-cooperate boosts both runners', () => {
+  const world = emptyWorld();
+  world.elapsedMs = 1000;
+  const a = makePlayer({ id: 'a', role: 'human', lane: 4, distance: 1000, x: 160 });
+  const b = makePlayer({ id: 'b', role: 'human', lane: 4, distance: 1010, x: 170 });
+  world.players.set('a', a);
+  world.players.set('b', b);
+  const starts = tickDilemmas(world, makeCtx(1000));
+  assert.equal(starts.length, 1);
+  assert.equal(starts[0].type, 'start');
+  const id = starts[0].encounterId;
+  applyDilemmaChoice(a, { type: 'dilemma', encounterId: id, choice: 'cooperate', seq: 1 }, world, makeCtx(1100));
+  const resolved = applyDilemmaChoice(
+    b,
+    { type: 'dilemma', encounterId: id, choice: 'cooperate', seq: 1 },
+    world,
+    makeCtx(1200),
+  );
+  assert.equal(resolved[0]?.type, 'resolve');
+  assert.ok(a.boostUntilMs > 1200);
+  assert.ok(b.boostUntilMs > 1200);
+});
+
+test('dilemma betrayal: eater lives and boosts, victim dies', () => {
+  const world = emptyWorld();
+  const a = makePlayer({ id: 'a', role: 'bug', lane: 1, distance: 1000, x: 80 });
+  const b = makePlayer({ id: 'b', role: 'bug', lane: 1, distance: 1010, x: 90 });
+  world.players.set('a', a);
+  world.players.set('b', b);
+  const start = tickDilemmas(world, makeCtx(1000))[0];
+  assert.ok(start);
+  const eater = world.players.get(start.aId)!;
+  const victim = world.players.get(start.bId)!;
+  applyDilemmaChoice(
+    eater,
+    { type: 'dilemma', encounterId: start.encounterId, choice: 'eat', seq: 1 },
+    world,
+    makeCtx(1100),
+  );
+  const resolved = applyDilemmaChoice(
+    victim,
+    { type: 'dilemma', encounterId: start.encounterId, choice: 'cooperate', seq: 1 },
+    world,
+    makeCtx(1200),
+  );
+  assert.equal(resolved[0]?.outcome, 'a-eats');
+  assert.equal(eater.died, false);
+  assert.equal(victim.died, true);
+  assert.ok(eater.boostUntilMs > 1200);
+});
+
+test('dilemma both-eat kills both runners', () => {
+  const world = emptyWorld();
+  const a = makePlayer({ id: 'a', role: 'klaus', lane: 7, distance: 2000, x: 280 });
+  const b = makePlayer({ id: 'b', role: 'klaus', lane: 7, distance: 2010, x: 290 });
+  world.players.set('a', a);
+  world.players.set('b', b);
+  const start = tickDilemmas(world, makeCtx(1000))[0];
+  applyDilemmaChoice(
+    a,
+    { type: 'dilemma', encounterId: start.encounterId, choice: 'eat', seq: 1 },
+    world,
+    makeCtx(1100),
+  );
+  applyDilemmaChoice(
+    b,
+    { type: 'dilemma', encounterId: start.encounterId, choice: 'eat', seq: 1 },
+    world,
+    makeCtx(1200),
+  );
+  assert.equal(a.died, true);
+  assert.equal(b.died, true);
+});
+
+test('dilemma timeout treats missing choices as cooperate', () => {
+  const world = emptyWorld();
+  const a = makePlayer({ id: 'a', role: 'human', lane: 4, distance: 1000, x: 160 });
+  const b = makePlayer({ id: 'b', role: 'human', lane: 4, distance: 1008, x: 168 });
+  world.players.set('a', a);
+  world.players.set('b', b);
+  assert.equal(tickDilemmas(world, makeCtx(1000)).length, 1);
+  const timed = tickDilemmas(world, makeCtx(3000));
+  const resolve = timed.find((event) => event.type === 'resolve');
+  assert.equal(resolve?.outcome, 'timeout-cooperate');
+  assert.equal(a.died, false);
+  assert.equal(b.died, false);
+  assert.ok(a.boostUntilMs >= 3000);
+  assert.ok(b.boostUntilMs >= 3000);
+});
+
+test('same-species eat intent is ignored — dilemma owns that fight', () => {
+  const world = emptyWorld();
+  const a = makePlayer({ id: 'a', role: 'human', lane: 4, x: 160, distance: 1000 });
+  const b = makePlayer({ id: 'b', role: 'human', lane: 4, x: 170, distance: 1010 });
+  world.players.set('a', a);
+  world.players.set('b', b);
+  assert.equal(resolveEat(a, { type: 'eat', targetId: 'b', seq: 1 }, world), null);
+  assert.equal(b.died, false);
 });
 
 // ---- Standings ------------------------------------------------------------
@@ -330,6 +505,29 @@ test('standings rank alive over dead, then by distance', () => {
   assert.equal(standings[0].userId, 'far', 'furthest survivor first');
   assert.equal(standings[1].userId, 'near');
   assert.equal(standings[2].userId, 'dead', 'dead last');
+});
+
+test('winner record is placement 1 — earlier finish beats a corpse with more distance', () => {
+  const world = emptyWorld();
+  world.players.set(
+    'win',
+    makePlayer({ id: 'win', finished: true, finishTimeMs: 48_000, distance: 7000 }),
+  );
+  world.players.set(
+    'late',
+    makePlayer({ id: 'late', finished: true, finishTimeMs: 59_000, distance: 9000 }),
+  );
+  world.players.set('dead', makePlayer({ id: 'dead', died: true, distance: 50_000 }));
+  const standings = computeStandings(world);
+  assert.equal(standings[0].userId, 'win');
+  assert.equal(standings[0].placement, 1);
+  assert.equal(standings[0].died, false);
+  assert.equal(standings[0].finished, true);
+  assert.equal(standings[1].userId, 'late');
+  assert.equal(standings[1].placement, 2);
+  assert.equal(standings[2].userId, 'dead');
+  assert.equal(standings[2].died, true);
+  assert.equal(standings[2].placement, 3);
 });
 
 // ---- Full race ------------------------------------------------------------

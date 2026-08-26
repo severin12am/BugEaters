@@ -25,6 +25,12 @@ export const AUDIO_KEYS = {
   phraseKing1: 'audio-phrase-king-1',
   phraseKing2: 'audio-phrase-king-2',
   phraseUntrue: 'audio-phrase-untrue',
+  phrase2Pockets: 'audio-phrase-2pockets',
+  phraseValues2: 'audio-phrase-values2',
+  phraseHumanos3: 'audio-phrase-humanos3',
+  phraseBestBehaviour: 'audio-phrase-bestbehaviour',
+  phraseValhalla: 'audio-phrase-valhalla',
+  phraseDrive: 'audio-phrase-drive',
 } as const;
 
 /** Random ambient voice lines from Unity PhraseManager. */
@@ -48,6 +54,12 @@ export const PHRASE_AUDIO_KEYS: readonly string[] = [
   AUDIO_KEYS.phraseKing1,
   AUDIO_KEYS.phraseKing2,
   AUDIO_KEYS.phraseUntrue,
+  AUDIO_KEYS.phrase2Pockets,
+  AUDIO_KEYS.phraseValues2,
+  AUDIO_KEYS.phraseHumanos3,
+  AUDIO_KEYS.phraseBestBehaviour,
+  AUDIO_KEYS.phraseValhalla,
+  AUDIO_KEYS.phraseDrive,
 ];
 
 export const STEP_AUDIO_KEY: Record<CharacterType, string> = {
@@ -83,4 +95,10 @@ export const AUDIO_PATHS: Record<string, string> = {
   [AUDIO_KEYS.phraseKing1]: `${AUDIO_BASE}/king_1.wav`,
   [AUDIO_KEYS.phraseKing2]: `${AUDIO_BASE}/king_2.wav`,
   [AUDIO_KEYS.phraseUntrue]: `${AUDIO_BASE}/untrue.wav`,
+  [AUDIO_KEYS.phrase2Pockets]: `${AUDIO_BASE}/2pockets.wav`,
+  [AUDIO_KEYS.phraseValues2]: `${AUDIO_BASE}/values2.wav`,
+  [AUDIO_KEYS.phraseHumanos3]: `${AUDIO_BASE}/humanos3.wav`,
+  [AUDIO_KEYS.phraseBestBehaviour]: `${AUDIO_BASE}/bestbehaviour.wav`,
+  [AUDIO_KEYS.phraseValhalla]: `${AUDIO_BASE}/valhalla.wav`,
+  [AUDIO_KEYS.phraseDrive]: `${AUDIO_BASE}/drive.wav`,
 };

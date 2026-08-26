@@ -3,52 +3,57 @@
  * ability pickups.
  *
  * DESIGN
- *   - Spawns are a pure function of (seed, main lane, slot index). We use the
- *     stateless seeded hash — NOT the mutable RNG — so the exact same layout is
- *     produced no matter how tick timing jitters. This is what lets clients
- *     render precisely what the server simulated.
- *   - Hazards live in WORLD SPACE: each has a `worldY` (px along the track). A
- *     player interacts with a hazard when their own `distance` crosses it in the
- *     same sub-lane. Because progress is per-player, a boosted runner reaches
- *     hazards sooner — exactly like the single-player feel.
+ *   - Spawns are a pure function of (seed, main lane, slot index).
+ *   - Hazards live in WORLD SPACE: each has a `worldY` (px along the track).
  *
- * Effects (mirroring `TUNING.obstacles` on the client):
- *   - manhole (open) + grounded  → death
- *   - trash + grounded           → stall (no forward progress briefly)
- *   - trash + airborne           → cleared, no effect
- *   - puddle                     → slide boost (faster) for a short window
+ * Effects:
+ *   - manhole (open) + grounded  → death (unless BLACKROCK / flight)
+ *   - trash / passport           → stuck until lane change
+ *   - puddle                     → slide boost (unless BLACKROCK)
+ *   - straw                      → cosmetic only
  *   - pickup                     → grants an ability (inventory cap 3)
  */
 import { seededInt } from '../rng.js';
 import type { Hazard, PlayerState, WorldState } from '../types.js';
 import type { SimulationContext } from './context.js';
+import { hellModeMainLanes, PICKUP_ABILITY_POOL } from './abilitySystem.js';
 import { isAirborne } from './movementSystem.js';
 
-/** Spawn cadence per main lane (ms), from solo `TUNING.obstacles.byMainLane`. */
-const LANE_INTERVAL_MS = [1100, 1300, 1000];
-/** trash / puddle / manhole weights per main lane (solo tuning). */
+/** Spawn cadence per main lane (ms) — slightly slower than solo for sticky-trash UX. */
+const LANE_INTERVAL_MS = [1400, 1600, 1300];
+/** trash / puddle / manhole weights — trash reduced so sticky bins feel fair. */
 const LANE_WEIGHTS = [
-  { trash: 1, puddle: 0.6, manhole: 0.4 },
-  { trash: 0.8, puddle: 1, manhole: 0.5 },
-  { trash: 0.7, puddle: 0.9, manhole: 0.45 },
+  { trash: 0.55, puddle: 0.7, manhole: 0.45 },
+  { trash: 0.45, puddle: 1, manhole: 0.55 },
+  { trash: 0.4, puddle: 0.95, manhole: 0.5 },
 ];
 /** Chance a manhole spawns open (deadly). Solo: `manholeOpenChance`. */
 const MANHOLE_OPEN_CHANCE = 0.35;
 /** Ability pickups spawn on a steady cadence (solo randomizes 2..4s). */
 const ABILITY_INTERVAL_MS = 3_000;
-/** How far ahead of its spawn slot a hazard is placed (px). */
-const SPAWN_AHEAD_MIN = 500;
-const SPAWN_AHEAD_MAX = 900;
+/** How far ahead of its spawn slot a hazard is placed (logical px). */
+const SPAWN_AHEAD_MIN = 900;
+const SPAWN_AHEAD_MAX = 1400;
 /** Don't spawn hazards inside the final stretch. */
 const STOP_BEFORE_FINISH_PX = 500;
-/** Vertical tolerance (px) for a runner to "hit" a hazard. > one tick's travel. */
-const HAZARD_HIT_TOLERANCE_PX = 30;
+/**
+ * Vertical tolerance (logical px) for a runner to "hit" a hazard.
+ * Must exceed one tick of travel at max boost (~442 * 0.05 * 1.5 ≈ 33).
+ */
+/**
+ * Vertical hit window (logical px). Must cover one tick at max boost
+ * (~442 * 0.05 * 1.5 * 1.5 ≈ 50) plus margin so pickups/trash are not skipped.
+ */
+const HAZARD_HIT_TOLERANCE_PX = 64;
+/**
+ * When stuck on trash/passport, stand this far before the bin (logical px).
+ * Keeps the runner visually tight against the obstacle instead of a big gap.
+ */
+const TRASH_STUCK_GAP_PX = 10;
 /** Puddle slide boost duration (ms) — solo `puddleSlideDurationSec`. */
 export const PUDDLE_SLIDE_MS = 2_000;
-/** How long a missed trash bin stalls a grounded runner (ms). */
+/** How long a missed trash bin stalls a grounded runner (ms). Legacy. */
 export const TRASH_STALL_MS = 550;
-/** Abilities a road pickup can grant (server understands these effects). */
-const PICKUP_ABILITY_POOL = ['speed-up', 'needle-spawner'];
 
 /** Deterministic float in [0,1) for a (seed, key) pair. */
 function seededFloat(seed: number, key: number): number {
@@ -65,19 +70,13 @@ function totalRaceDistancePx(ctx: SimulationContext): number {
 }
 
 /**
- * Spawns hazards + pickups whose slot the world clock has newly passed. Each main
- * lane advances on its own cadence; a slot's contents are fully determined by
- * (seed, lane, slot) so the layout is reproducible and timing-independent.
+ * Spawns hazards + pickups whose slot the world clock has newly passed.
  */
 export function spawnHazards(world: WorldState, ctx: SimulationContext): void {
   const speed = ctx.config.world.speedPxPerSec;
   const spawnCutoff = totalRaceDistancePx(ctx) - STOP_BEFORE_FINISH_PX;
+  const hellMains = hellModeMainLanes(world, ctx.raceMs);
 
-  // Spawn ahead of the LEADING edge: whichever is further, the world scroll front
-  // or the furthest runner. A boosted/sliding runner can outrun the world front;
-  // keying spawns off the leader guarantees every hazard first appears AHEAD of
-  // everyone (it scrolls in from the top) instead of popping in beside/behind a
-  // runner who has pulled in front of the world clock.
   let leadY = ctx.worldY;
   for (const player of world.players.values()) {
     if (!player.died && !player.finished && player.distance > leadY) {
@@ -86,7 +85,8 @@ export function spawnHazards(world: WorldState, ctx: SimulationContext): void {
   }
 
   for (let lane = 0; lane < 3; lane++) {
-    const intervalDist = (LANE_INTERVAL_MS[lane] / 1000) * speed;
+    const hellBoost = hellMains.has(lane) ? 0.5 : 1;
+    const intervalDist = ((LANE_INTERVAL_MS[lane] * hellBoost) / 1000) * speed;
 
     // --- Hazards (trash / puddle / manhole) ---
     while ((world.laneSpawnCursor[lane] + 1) * intervalDist <= leadY) {
@@ -112,9 +112,8 @@ export function spawnHazards(world: WorldState, ctx: SimulationContext): void {
 }
 
 function makeHazard(seed: number, lane: number, slot: number, slotDist: number): Hazard {
-  // Independent hash streams per concern so they don't correlate.
   const key = (lane * 1_000_003 + slot) >>> 0;
-  const sub = seededInt(seed ^ 0x1111, key, 3); // 0..2 within the main lane
+  const sub = seededInt(seed ^ 0x1111, key, 3);
   const globalLane = lane * 3 + sub;
   const ahead = seededRange(seed ^ 0x2222, key, SPAWN_AHEAD_MIN, SPAWN_AHEAD_MAX);
   const worldY = slotDist + ahead;
@@ -172,44 +171,60 @@ function pickKind(seed: number, key: number, lane: number): 'trash' | 'puddle' |
 
 /**
  * Resolves hazard interactions for one player at their current forward distance.
- * Mutates the player (death, stall, slide, pickups) and records which hazards a
- * player has already resolved so effects fire once.
  */
 export function resolveHazards(player: PlayerState, world: WorldState, ctx: SimulationContext): void {
   if (player.died || player.finished) {
     return;
   }
+  // DAVOS — airborne window: skip all hazard resolution (pickups included).
+  if (ctx.raceMs < player.flightUntilMs) {
+    return;
+  }
+
+  const blackrock = ctx.raceMs < player.blackrockUntilMs;
+  const airborne = isAirborne(player, ctx.raceMs);
+
   for (const hazard of world.hazards) {
     if (hazard.lane !== player.lane) {
       continue;
     }
-    if (Math.abs(hazard.worldY - player.distance) > HAZARD_HIT_TOLERANCE_PX) {
+    if (!hazardTouchesRunner(player, hazard.worldY)) {
       continue;
     }
     const already = hazard.resolvedBy?.has(player.id) ?? false;
 
     switch (hazard.kind) {
       case 'manhole':
-        if (hazard.open && !isAirborne(player, ctx.raceMs) && !ctx.config.immortal) {
+        if (hazard.open && !airborne && !blackrock && !ctx.config.immortal) {
           player.died = true;
         }
         break;
-          case 'trash':
-            if (already) {
-              break;
-            }
-            // A trash bin physically blocks the runner: you cannot jump a bin,
-            // you must go AROUND it by changing lane. Stays stuck (zero forward
-            // progress) until a successful lane change clears it (movementSystem).
-            player.stuck = true;
-            markResolved(hazard, player.id);
-            break;
-      case 'puddle':
+      case 'trash':
+      case 'passport':
         if (already) {
+          break;
+        }
+        // Sticky bin / passport: change lane to go around.
+        player.stuck = true;
+        // Snap tight to the bin so "stuck in front" reads clearly (not a big gap).
+        player.distance = hazard.worldY - TRASH_STUCK_GAP_PX;
+        markResolved(hazard, player.id);
+        break;
+      case 'puddle':
+        if (already || blackrock) {
+          if (blackrock && !already) {
+            markResolved(hazard, player.id);
+          }
           break;
         }
         player.slideUntilMs = ctx.raceMs + PUDDLE_SLIDE_MS;
         markResolved(hazard, player.id);
+        break;
+      case 'straw':
+        // Cosmetic prop — no gameplay effect.
+        if (!already) {
+          markResolved(hazard, player.id);
+        }
         break;
       case 'pickup':
         if (already) {
@@ -224,13 +239,24 @@ export function resolveHazards(player: PlayerState, world: WorldState, ctx: Simu
   }
 }
 
+/** Near the hazard now, or crossed it this tick (stops boost skip-through). */
+function hazardTouchesRunner(player: PlayerState, hazardY: number): boolean {
+  if (Math.abs(hazardY - player.distance) <= HAZARD_HIT_TOLERANCE_PX) {
+    return true;
+  }
+  const a = player.prevDistance;
+  const b = player.distance;
+  const lo = Math.min(a, b) - HAZARD_HIT_TOLERANCE_PX * 0.25;
+  const hi = Math.max(a, b) + HAZARD_HIT_TOLERANCE_PX * 0.25;
+  return hazardY >= lo && hazardY <= hi;
+}
+
 function markResolved(hazard: Hazard, playerId: string): void {
   (hazard.resolvedBy ??= new Set<string>()).add(playerId);
 }
 
 /** Removes hazards that every runner has scrolled well past. */
 export function pruneHazards(world: WorldState, ctx: SimulationContext): void {
-  // Prune behind the slowest living runner so nobody misses a hazard.
   let minDistance = ctx.worldY;
   for (const player of world.players.values()) {
     if (!player.died && !player.finished) {

@@ -5,8 +5,9 @@
  * race without wiring Supabase Edge Function secrets first. NEVER enable this
  * in production — it lets anyone mint a valid race ticket.
  *
- * Tickets for the SAME `roomId` share seed + startsAtMs so multiple browser
- * tabs join one race. Seats follow the real track layout:
+ * Tickets for the SAME lobby `roomId` share a 15s join window. Each wave gets
+ * its own Colyseus room so rematch after death cannot rejoin a leftover race.
+ * Seats follow the real track layout:
  *   Bug   → left  main lane (sub-lanes 0–2)
  *   Human → middle main lane (sub-lanes 3–5)
  *   Klaus → right main lane (sub-lanes 6–8)
@@ -23,13 +24,18 @@ const PRACTICE_SEATS: ReadonlyArray<{ role: PlayerRole; lane: number }> = [
   { role: 'klaus', lane: 7 }, // right main lane center
 ];
 
-/** Shared immutable race params for a local room id. */
-interface DevRoomParams {
+/** How long two phones have to tap Testing / Practice again and still meet. */
+export const PLAYTEST_JOIN_WAIT_MS = 15_000;
+
+/** Shared immutable race params for a local lobby id. */
+export interface DevRoomParams {
   seed: number;
   startsAtMs: number;
   maxPlayers: number;
   /** userId → seat index into PRACTICE_SEATS */
   seats: Map<string, number>;
+  /** Colyseus roomKey for this wave — unique so rematch never hits a leftover live room. */
+  raceRoomId: string;
 }
 
 /** roomId → first-joiner params (cleared after the planned race window ends). */
@@ -74,7 +80,7 @@ export function mountDevTicketRoute(
       const seat = assignPracticeSeat(shared, userId, body.role);
 
       const claims: Omit<RaceTicketClaims, 'exp'> = {
-        roomId,
+        roomId: shared.raceRoomId,
         userId,
         role: seat.role,
         globalSubLane: seat.lane,
@@ -102,38 +108,32 @@ export function mountDevTicketRoute(
 }
 
 /**
- * First ticket for a roomId defines seed / start / capacity. Later tickets for
- * the same room reuse those values so multi-tab joins stay in sync.
+ * First ticket for a lobby id defines seed / start / capacity. Later tickets
+ * for the same lobby reuse those values so two phones stay in sync.
  *
- * Wave reuse rules (tuned for reliable hand-testing of 2+ tabs):
- *   - While the wave is LIVE — during its shared countdown OR while the race is
- *     still running — ANY tab that joins this room lands in the SAME wave. This
- *     is what lets a second tab open at a leisurely pace and still race with the
- *     first one, instead of only during a tiny countdown window.
- *   - Once the race is OVER, the next joiner starts a FRESH wave. Because a
- *     "Practice again" restart sets a future `startsAtMs`, both tabs restarting
- *     within the new countdown re-converge on that fresh wave and stay synced.
- * A late joiner spawns into the running (authoritative) simulation at the
- * current world time — fine for practice; production admission is unaffected.
+ * Wave reuse rules:
+ *   - During the join window (before `startsAtMs`, default 15s) any new ticket
+ *     lands in the SAME wave — time for a remote friend to tap Testing.
+ *   - Once the race has started, the next ticket mints a FRESH wave with its
+ *     own Colyseus room. Reusing a live race is what dumped "Practice again"
+ *     back into a leftover timer after death.
+ *   - Same userId may reconnect to their wave through the race + a short grace
+ *     (page reload). Practice again / Testing mint a new userId, so they get
+ *     the new wave instead.
  */
-function getOrCreateRoomParams(
+export function getOrCreateRoomParams(
   roomId: string,
   body: DevTicketBody,
   config: RaceConfig,
+  now = Date.now(),
 ): DevRoomParams {
   const existing = roomParams.get(roomId);
-  const now = Date.now();
   if (existing) {
     const userId = body.userId?.trim();
     const alreadySeated = userId ? existing.seats.has(userId) : false;
-    // Live = still counting down or still racing. Note: no post-race grace here
-    // on purpose — reusing a just-finished (sealed) wave is what caused replay
-    // desyncs. Once the race ends, fall through and mint a fresh synced wave.
-    const raceLive = now < existing.startsAtMs + config.raceDurationMs;
-    // Allow a brief reconnect grace after the finish so a mid-race disconnect
-    // can rejoin the same wave, but not so long that a stale wave gets reused.
+    const joinWindowOpen = now < existing.startsAtMs;
     const reconnectGrace = now < existing.startsAtMs + config.raceDurationMs + 15_000;
-    if (raceLive || (alreadySeated && reconnectGrace)) {
+    if (joinWindowOpen || (alreadySeated && reconnectGrace)) {
       return existing;
     }
   }
@@ -141,7 +141,7 @@ function getOrCreateRoomParams(
   const startsAtMs =
     typeof body.startsAtMs === 'number' && Number.isFinite(body.startsAtMs) && body.startsAtMs > now + 2_000
       ? body.startsAtMs
-      : now + Math.max(config.countdownMs, 8_000);
+      : now + PLAYTEST_JOIN_WAIT_MS;
   const seed =
     typeof body.seed === 'number' && Number.isFinite(body.seed)
       ? body.seed >>> 0
@@ -156,9 +156,14 @@ function getOrCreateRoomParams(
     startsAtMs,
     maxPlayers,
     seats: new Map(),
+    raceRoomId: `${roomId}-w${startsAtMs.toString(36)}-${(seed >>> 0).toString(36)}`,
   };
   roomParams.set(roomId, created);
   return created;
+}
+
+export function resetDevRoomParamsForTests(): void {
+  roomParams.clear();
 }
 
 /**

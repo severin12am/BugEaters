@@ -2,6 +2,8 @@
 
 **Start here** after the root [`README.md`](../README.md).
 
+**Auditing the codebase (humans or other models):** open [`MODEL_AUDIT_GUIDE.md`](./MODEL_AUDIT_GUIDE.md) first — dual race paths, symptom→file map, server layout, verification.
+
 ---
 
 ## Documentation hierarchy
@@ -10,12 +12,17 @@
 Tier 0 — PRODUCT CANON
 └── APP_MASTER_SPEC.md          Tournament invariants, open/deferred decisions
 
+Tier 0.5 — AUDIT HANDOFF
+└── MODEL_AUDIT_GUIDE.md        Find code fast; solo vs auth; smoke checks
+
 Tier 1 — IMPLEMENTATION (current code)
 ├── CODEBASE.md                 Every src/ file and what it does
 ├── RACE_MECHANICS.md           Runner, obstacles, eating, scroll model
 ├── ABILITIES.md                12 briefcase abilities + executors
 ├── SCENES_AND_FLOW.md          Phaser scenes, registry, navigation
 ├── DEV_GUIDE.md                Build, test, Ability Lab, scripts
+├── AUTHORITATIVE_RACE_SERVER.md Race-server env / Docker
+├── multiplayer/*               Auth architecture, inputs, prediction
 └── BACKEND.md                  Supabase, Realtime, Edge Functions
 
 Tier 1 — TOURNAMENT / CRYPTO (product detail)
@@ -25,6 +32,7 @@ Tier 1 — TOURNAMENT / CRYPTO (product detail)
 └── TON_CRYPTO_IMPLEMENTATION_PLAN.md
 
 Tier 2 — OPERATIONS
+├── DEPLOY_NOW.md
 ├── PHONE_TEST_NOW.md
 └── TESTING_TOURNAMENT.md
 
@@ -36,7 +44,7 @@ Tier 2 — LEGACY / SNAPSHOTS
 Parallel tracks
 ├── ios-handoff/                Native iOS port
 ├── BUG_ANIMATION_*.md          Art pipeline
-└── content/encyclopedia.md     **Player encyclopedia master** (in-game Guide UI)
+└── content/encyclopedia.md     **Player encyclopedia master** (in-game Guide UI; first chapter uses photos in `public/assets/guide/`)
 ```
 
 ### Conflict rules
@@ -53,12 +61,14 @@ Parallel tracks
 
 | Role | Read |
 |------|------|
-| New engineer | `CODEBASE.md` → `SCENES_AND_FLOW.md` → `RACE_MECHANICS.md` |
-| Gameplay / balance | `RACE_MECHANICS.md` → `ABILITIES.md` → `src/config/tuning.ts` |
-| Ability work | `ABILITIES.md` → `AbilityExecutor.ts` → `content/encyclopedia.md` |
-| Multiplayer / backend | `BACKEND.md` → `src/net/RoomSession.ts` |
+| **AI / code auditor** | **`MODEL_AUDIT_GUIDE.md`** → owner files → `APP_MASTER_SPEC.md` |
+| New engineer | `MODEL_AUDIT_GUIDE.md` → `CODEBASE.md` → `SCENES_AND_FLOW.md` |
+| Gameplay / balance | `RACE_MECHANICS.md` → `ABILITIES.md` → `src/config/tuning.ts` + `server/.../raceConfig.ts` |
+| Ability work | `ABILITIES.md` → `abilitySystem.ts` (auth) + `AbilityExecutor.ts` (solo) |
+| Multiplayer / auth race | `MODEL_AUDIT_GUIDE.md` §1–4 → `multiplayer/ARCHITECTURE.md` → `server/src/domain/` |
+| Legacy Realtime | `BACKEND.md` → `src/net/RoomSession.ts` |
 | Product / tournament | `APP_MASTER_SPEC.md` → `TOURNAMENT_SYSTEM_SPEC.md` |
-| QA / phone test | `DEV_GUIDE.md` → `PHONE_TEST_NOW.md` |
+| QA / phone test | `PHONE_TEST_NOW.md` → `DEPLOY_NOW.md` |
 | Players / copy | [`content/encyclopedia.md`](../content/encyclopedia.md) → in-game **Guide** |
 
 ---

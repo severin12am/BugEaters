@@ -1,7 +1,8 @@
 # Codebase reference
 
 **Purpose:** Map every significant source file to its responsibility.  
-**Ground truth:** The TypeScript in `src/` — this doc is updated to match June 2026 implementation.
+**Ground truth:** The TypeScript in `src/` and `server/` — updated August 2026.  
+**Audit routing:** Prefer [`MODEL_AUDIT_GUIDE.md`](./MODEL_AUDIT_GUIDE.md) for “where do I look for X?”
 
 ---
 
@@ -48,7 +49,8 @@ Phaser scenes registered in `gameConfig.ts`. See [`SCENES_AND_FLOW.md`](SCENES_A
 | `ReadyPanelScene.ts` | `ReadyPanelScene` | Tap-ready UI (built, not default hub route) |
 | `LobbyScene.ts` | `LobbyScene` | Matchmaking countdown, roster, pass burn modal, → GameScene |
 | **`GameScene.ts`** | `GameScene` | **Core race loop** — scroll, obstacles, abilities, eating, lighting, multiplayer sync |
-| `EndScene.ts` | `EndScene` | FINISH / ELIMINATED / TIME UP, standings, race again |
+| `EndScene.ts` | `EndScene` | FINISH / ELIMINATED / TIME UP, standings, Practice again (fresh `/dev/ticket`) |
+| `DevSessionScene.ts` | `DevSessionScene` | Playtest menu: Testing (auth race) |
 | `BlockedStateScene.ts` | `BlockedStateScene` | No pass / wallet / wrong day (not default route) |
 | `SundayFinaleScene.ts` | `SundayFinaleScene` | Sunday framing (not default route) |
 | `ChampionDashboardScene.ts` | `ChampionDashboardScene` | Billboard upload mock (not default route) |
@@ -120,15 +122,46 @@ Gameplay systems used by `GameScene`. Constructed in `create()` / `initGameplayS
 
 ## Networking (`src/net/`)
 
+### Authoritative Colyseus (playtest / production race)
+
 | File | Role |
 |------|------|
-| **`RoomSession.ts`** | Supabase Realtime channel — presence, movement snapshots, dilemma events, npc:eat, race_events eliminations |
+| **`authoritative/AuthoritativeRaceClient.ts`** | Join, send intents, `getRenderState()` |
+| `authoritative/RaceConnection.ts` | Ticket + Colyseus room |
+| `authoritative/protocol.ts` | Wire DTOs (mirror `server/src/net/protocol.ts`) |
+| `authoritative/InputPredictor.ts` | Local prediction + reconcile |
+| `authoritative/SnapshotInterpolator.ts` | Remote lane/x smoothing |
+| `authoritative/distanceExtrapolator.ts` | 60fps road between 20Hz snapshots + smoothed clock |
+| `authoritative/clientRaceConfig.ts` | Lane geometry mirror of server |
+| `authoritative/env.ts` | `VITE_RACE_SERVER_URL`, `VITE_RACE_DEV_MODE` |
+
+### Legacy Supabase Realtime
+
+| File | Role |
+|------|------|
+| **`RoomSession.ts`** | Presence, movement snapshots, dilemma, eliminations |
 | `auth.ts` | Telegram initData → Edge Function, or anonymous dev auth |
 | `supabaseClient.ts` | Client singleton from env |
 | `env.ts` | `VITE_SUPABASE_*`, `VITE_FORCED_SEED`, URL seed param |
 | `types.ts` | RoomInfo, snapshots, standings, elimination payloads |
 
-See [`BACKEND.md`](BACKEND.md).
+See [`BACKEND.md`](BACKEND.md) · [`MODEL_AUDIT_GUIDE.md`](./MODEL_AUDIT_GUIDE.md).
+
+---
+
+## Authoritative race server (`server/`)
+
+| Path | Role |
+|------|------|
+| `server/src/index.ts` | Express + Colyseus + `/healthz` |
+| `server/src/dev/devTicketRoute.ts` | Playtest seats Bug/Human/Klaus |
+| `server/src/domain/RaceSimulation.ts` | Tick pipeline |
+| `server/src/domain/systems/*.ts` | movement, hazards, abilities, eat, dilemma, progress, dividers |
+| `server/src/net/RaceRoom.ts` | Colyseus adapter |
+| `server/src/net/protocol.ts` | CHANNEL + snapshot DTOs |
+| `server/test/simulation.test.ts` | Determinism + rules tests |
+
+Commands: `npm run race-server` · `npm run race-server:test` · `npm run smoke:auth-race`.
 
 ---
 
@@ -154,6 +187,8 @@ See [`BACKEND.md`](BACKEND.md).
 | `theme.ts` | Mono palette tokens |
 | `UiChrome.ts` | Buttons, panels, week strip, status pills — tournament shell |
 | `grainBackground.ts` | Full-screen void + grain for menu scenes |
+| `encyclopediaDiagrams.ts` | Guide mono schemes (`:::diagram`) |
+| `encyclopediaShots.ts` | Guide photo cards (`:::shot`) |
 
 ---
 

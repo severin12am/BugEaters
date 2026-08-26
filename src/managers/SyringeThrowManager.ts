@@ -21,6 +21,8 @@ export class SyringeThrowManager {
   private aimGuide: Phaser.GameObjects.Graphics | null = null;
   private projectile: Phaser.GameObjects.Image | null = null;
   private projectileResolved = false;
+  /** Optional hook when a throw lands (auth races send aim to the server). */
+  private onThrowLand: ((worldX: number, worldY: number) => void) | null = null;
 
   private readonly onPointerDown = (pointer: Phaser.Input.Pointer): void => {
     if (!this.armed || this.aiming || this.shouldIgnorePointer(pointer.x, pointer.y)) {
@@ -59,6 +61,10 @@ export class SyringeThrowManager {
 
   isArmed(): boolean {
     return this.armed || this.aiming;
+  }
+
+  setOnThrowLand(handler: ((worldX: number, worldY: number) => void) | null): void {
+    this.onThrowLand = handler;
   }
 
   arm(): void {
@@ -293,6 +299,7 @@ export class SyringeThrowManager {
   }
 
   private tryHit(projectile: Phaser.GameObjects.Image): boolean {
+    this.onThrowLand?.(projectile.x, projectile.y);
     return this.tryHitAt(projectile.x, projectile.y);
   }
 

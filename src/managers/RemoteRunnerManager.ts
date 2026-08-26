@@ -170,7 +170,11 @@ export class RemoteRunnerManager {
       player.hideAfterDeath();
       return;
     }
-    player.x = params.x;
+    // ALWAYS place by sub-lane index with the same DPR-scaled centers as the
+    // local runner. Server `x` is logical (subLaneWidth=40); using it raw on a
+    // phone (DPR=2) parks every rival near the left — Bug + Human both look
+    // like they spawned in Bugs' lane.
+    player.x = subLaneCenterX(params.globalSubLane, this.subLaneWidth);
     // 1:1 faithful mapping (same scale as the world's obstacles): a rival who
     // pulls ahead climbs off the top; one who falls behind drops off the bottom.
     const offset = authRivalGapToScreenOffset(params.gap);

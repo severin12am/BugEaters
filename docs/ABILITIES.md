@@ -7,7 +7,9 @@ Abilities are **Unity `AbilityTrigger` pickups** spawned on the road, collected 
 **Player guide (in-game):** Week hub → **Guide** → *Briefcase powers* section in [`content/encyclopedia.md`](../content/encyclopedia.md)  
 **Dev test:** `?abilityLab=1` — see [`DEV_GUIDE.md`](DEV_GUIDE.md)
 
-Default duration: **10 s** (`ABILITY_DEFAULT_DURATION_SEC`). CBDC Run speed: **10 s** at **1.3×** (`param` in abilities.ts).
+Default duration: **10 s** (`ABILITY_DEFAULT_DURATION_SEC`). CBDC Run speed: **10 s** at **1.5×** (`param` in abilities.ts).
+
+**Authoritative multiplayer (Fly / Colyseus):** all 12 effects are resolved on the server (`server/src/domain/systems/abilitySystem.ts`). Pickup pool matches the client. Needle / Digital ID / Paper Straw arm first, then send aim/place on gesture. Client auth path uses `AbilityExecutor.activate(id, true)` for VFX/arm only.
 
 ---
 

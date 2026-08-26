@@ -51,7 +51,10 @@ export type PlayerInput =
   | MoveInput
   | JumpInput
   | ActivateAbilityInput
-  | EatInput;
+  | EatInput
+  | DilemmaChoiceInput;
+
+export type DilemmaChoice = 'cooperate' | 'eat';
 
 export interface InputBase {
   /** Monotonic per-player sequence number. Server keeps only the newest. */
@@ -88,6 +91,13 @@ export interface EatInput extends InputBase {
   readonly targetId: PlayerId;
 }
 
+/** Choice in a same-species Prisoner's Dilemma encounter. */
+export interface DilemmaChoiceInput extends InputBase {
+  readonly type: 'dilemma';
+  readonly encounterId: string;
+  readonly choice: DilemmaChoice;
+}
+
 /**
  * ---- Authoritative world state ------------------------------------------
  * The server owns exactly one of these per room. It is the ONLY truth. Clients
@@ -106,6 +116,8 @@ export interface PlayerState {
   jumpUntilMs: number;
   /** Forward race progress in px. Higher = further along the track. */
   distance: number;
+  /** Distance at the start of this tick (for swept hazard hits). */
+  prevDistance: number;
   died: boolean;
   finished: boolean;
   /** Race time (ms) at which the player finished; null while still running. */
@@ -138,6 +150,25 @@ export interface PlayerState {
    * Race time (ms) until which a `speed-up` ability boost is active.
    */
   boostUntilMs: number;
+
+  // ---- Timed ability effects (server-authoritative) -----------------------
+  /** SHAREHOLDER — cannot be eaten. */
+  eatProtectedUntilMs: number;
+  /** BLACKROCK — immune to open manholes + puddles. */
+  blackrockUntilMs: number;
+  /** OPENED BORDERS — may cross closed main-lane dividers. */
+  barriersOpenUntilMs: number;
+  /** DAVOS BROS — skip hazard resolution while active. */
+  flightUntilMs: number;
+  /** SDG — denser hazards on other main lanes. */
+  hellModeUntilMs: number;
+  /** TAXATION — slows every other living runner. */
+  slowOthersUntilMs: number;
+  /** NEXUS SAPIENS — cosmetic; forwarded in snapshots for client lighting. */
+  flashlightUntilMs: number;
+  /** Armed placeable / needle waiting for aim (ability already consumed). */
+  armedAbilityId: string | null;
+  armedUntilMs: number;
 }
 
 /**
@@ -148,7 +179,7 @@ export interface PlayerState {
  */
 export interface Hazard {
   readonly id: number;
-  readonly kind: 'trash' | 'puddle' | 'manhole' | 'pickup';
+  readonly kind: 'trash' | 'puddle' | 'manhole' | 'pickup' | 'passport' | 'straw';
   readonly lane: number;
   /** Forward world position (px) where the hazard sits. */
   worldY: number;

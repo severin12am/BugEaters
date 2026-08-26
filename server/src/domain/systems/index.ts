@@ -8,5 +8,6 @@ export * from './dividerSystem.js';
 export * from './hazardSystem.js';
 export * from './eatingSystem.js';
 export * from './abilitySystem.js';
+export * from './dilemmaSystem.js';
 export * from './progressSystem.js';
 export * from './standingsSystem.js';

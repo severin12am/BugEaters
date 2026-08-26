@@ -37,6 +37,7 @@ import {
 import {
   advanceProgress,
   applyAbility,
+  applyDilemmaChoice,
   applyJump,
   applyMove,
   computeDividers,
@@ -47,7 +48,9 @@ import {
   resolveEat,
   resolveHazards,
   spawnHazards,
+  tickDilemmas,
   type AbilityEvent,
+  type DilemmaEvent,
   type SimulationContext,
 } from './systems/index.js';
 
@@ -62,7 +65,7 @@ export interface EliminationEvent {
   readonly targetId: string;
   readonly actorId: string | null;
   readonly raceMs: number;
-  readonly cause: 'eat' | 'ability';
+  readonly cause: 'eat' | 'ability' | 'dilemma';
 }
 
 /** What changed during a single {@link RaceSimulation.step}. */
@@ -75,6 +78,8 @@ export interface StepResult {
   readonly abilityEvents: AbilityEvent[];
   /** Eliminations resolved this tick (eats + targeted abilities). */
   readonly eliminations: EliminationEvent[];
+  /** Prisoner's Dilemma start/resolve events this tick. */
+  readonly dilemmaEvents: DilemmaEvent[];
 }
 
 export class RaceSimulation {
@@ -124,6 +129,7 @@ export class RaceSimulation {
       x: laneCenterX(spawn.lane, this.config),
       jumpUntilMs: 0,
       distance: 0,
+      prevDistance: 0,
       died: false,
       finished: false,
       finishTimeMs: null,
@@ -133,6 +139,15 @@ export class RaceSimulation {
       stallUntilMs: 0,
       stuck: false,
       boostUntilMs: 0,
+      eatProtectedUntilMs: 0,
+      blackrockUntilMs: 0,
+      barriersOpenUntilMs: 0,
+      flightUntilMs: 0,
+      hellModeUntilMs: 0,
+      slowOthersUntilMs: 0,
+      flashlightUntilMs: 0,
+      armedAbilityId: null,
+      armedUntilMs: 0,
     };
     this.world.players.set(spawn.id, player);
     return player;
@@ -190,18 +205,32 @@ export class RaceSimulation {
 
     const abilityEvents: AbilityEvent[] = [];
     const eliminations: EliminationEvent[] = [];
+    const dilemmaEvents: DilemmaEvent[] = [];
 
     // The world only simulates while racing. Waiting/countdown just tick the
     // clock so clients can show a synchronized countdown.
     if (phase === RacePhase.Racing || (phase === RacePhase.Finished && previousPhase === RacePhase.Racing)) {
       const ctx = this.buildContext();
-      this.applyInputs(ctx, abilityEvents, eliminations);
+      this.applyInputs(ctx, abilityEvents, eliminations, dilemmaEvents);
       advanceProgress(this.world, ctx);
       spawnHazards(this.world, ctx);
       for (const player of this.world.players.values()) {
         resolveHazards(player, this.world, ctx);
       }
       pruneHazards(this.world, ctx);
+      for (const event of tickDilemmas(this.world, ctx)) {
+        dilemmaEvents.push(event);
+        if (event.type === 'resolve') {
+          for (const targetId of event.diedIds ?? []) {
+            eliminations.push({
+              targetId,
+              actorId: targetId === event.aId ? event.bId : event.aId,
+              raceMs: ctx.raceMs,
+              cause: 'dilemma',
+            });
+          }
+        }
+      }
     }
 
     this.lastRaceMs = this.world.elapsedMs;
@@ -216,6 +245,7 @@ export class RaceSimulation {
       justFinished,
       abilityEvents,
       eliminations,
+      dilemmaEvents,
     };
   }
 
@@ -224,6 +254,7 @@ export class RaceSimulation {
     ctx: SimulationContext,
     outAbilities: AbilityEvent[],
     outEliminations: EliminationEvent[],
+    outDilemmas: DilemmaEvent[],
   ): void {
     for (const [id, queue] of this.pendingInputs) {
       const player = this.world.players.get(id);
@@ -239,7 +270,7 @@ export class RaceSimulation {
         player.lastInputSeq = input.seq;
         switch (input.type) {
           case 'move':
-            applyMove(player, input, this.world, this.config);
+            applyMove(player, input, this.world, this.config, ctx.raceMs);
             break;
           case 'jump':
             applyJump(player, input, ctx.raceMs, this.config);
@@ -255,9 +286,25 @@ export class RaceSimulation {
             break;
           }
           case 'eat': {
-            const eatenId = this.config.immortal ? null : resolveEat(player, input, this.world);
+            const eatenId = this.config.immortal ? null : resolveEat(player, input, this.world, ctx);
             if (eatenId) {
               outEliminations.push({ targetId: eatenId, actorId: player.id, raceMs: ctx.raceMs, cause: 'eat' });
+            }
+            break;
+          }
+          case 'dilemma': {
+            for (const event of applyDilemmaChoice(player, input, this.world, ctx)) {
+              outDilemmas.push(event);
+              if (event.type === 'resolve') {
+                for (const targetId of event.diedIds ?? []) {
+                  outEliminations.push({
+                    targetId,
+                    actorId: targetId === event.aId ? event.bId : event.aId,
+                    raceMs: ctx.raceMs,
+                    cause: 'dilemma',
+                  });
+                }
+              }
             }
             break;
           }

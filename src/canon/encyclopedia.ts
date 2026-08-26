@@ -4,6 +4,7 @@
  * Ability display names come from `src/config/abilities.ts` (no duplicate names).
  * Effect copy for each ability lives only in the `### ability:<id>` blocks in the MD file.
  * Diagrams use `:::diagram <id>` fences (see `encyclopediaDiagrams.ts`).
+ * In-game photos use `:::shot <id> | Title` (see `guideShots.ts` + `encyclopediaShots.ts`).
  */
 
 import { ABILITIES } from '../config/abilities';
@@ -12,6 +13,8 @@ import encyclopediaMd from '../../content/encyclopedia.md?raw';
 export interface EncyclopediaSection {
   id: string;
   title: string;
+  /** One-line index blurb. Empty when the markdown header has no third field. */
+  blurb: string;
   body: string;
 }
 
@@ -39,11 +42,12 @@ function parseSections(markdown: string): EncyclopediaSection[] {
     const rest = firstLineEnd === -1 ? '' : trimmed.slice(firstLineEnd + 1).trim();
 
     const headerBody = headerLine.slice(3).trim();
-    const pipe = headerBody.indexOf(' | ');
-    const id = pipe >= 0 ? headerBody.slice(0, pipe).trim() : slugify(headerBody);
-    const title = pipe >= 0 ? headerBody.slice(pipe + 3).trim() : headerBody;
+    const parts = headerBody.split(' | ').map((part) => part.trim()).filter((part) => part.length > 0);
+    const id = parts[0] ? (parts.length > 1 ? parts[0] : slugify(headerBody)) : slugify(headerBody);
+    const title = parts.length > 1 ? parts[1]! : headerBody;
+    const blurb = parts.length > 2 ? parts.slice(2).join(' | ') : '';
 
-    sections.push({ id, title, body: rest });
+    sections.push({ id, title, blurb, body: rest });
   }
 
   return sections;

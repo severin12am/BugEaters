@@ -131,6 +131,9 @@ export class RaceRoom extends Room {
     for (const elimination of result.eliminations) {
       this.broadcast(CHANNEL.Elimination, elimination);
     }
+    for (const dilemma of result.dilemmaEvents) {
+      this.broadcast(CHANNEL.Dilemma, dilemma);
+    }
 
     // Throttle snapshots to the configured broadcast rate.
     if (now - this.lastSnapshotAtMs >= this.ctx.config.snapshotIntervalMs) {

@@ -11,6 +11,7 @@ import { gameText } from '../utils/display';
 import { fontSize } from '../utils/layout';
 import type { NpcEntry, NpcManager } from './NpcManager';
 import type { RemoteEatTarget, RemoteRunnerManager } from './RemoteRunnerManager';
+import { CharacterType } from '../utils/constants';
 
 export interface DilemmaCallbacks {
   onPlayerDeath: () => void;
@@ -45,6 +46,8 @@ export class PrisonersDilemmaManager {
   /** Each remote rival can trigger at most one dilemma per race. */
   private readonly encounteredRemoteIds = new Set<string>();
   private readonly pendingEncounters = new Map<string, RemoteEncounter>();
+  /** Authoritative-race choice sink (server resolves outcomes). */
+  private authChoiceHandler: ((choice: DilemmaChoice) => void) | null = null;
   private hud: {
     panel: Phaser.GameObjects.Rectangle;
     timer: Phaser.GameObjects.Text;
@@ -138,13 +141,58 @@ export class PrisonersDilemmaManager {
     };
   }
 
+  /**
+   * Authoritative races: server starts the encounter; client only shows UI and
+   * reports the choice. Outcomes come from elimination / snapshot events.
+   */
+  beginAuthEncounter(
+    encounterId: string,
+    rivalUserId: string,
+    deadlineWallMs: number,
+    onChoice: (choice: DilemmaChoice) => void,
+  ): void {
+    if (this.overlayVisible || this.authChoiceHandler) {
+      return;
+    }
+    this.authChoiceHandler = onChoice;
+    this.activeEncounterId = encounterId;
+    this.activeNpc = null;
+    this.activeRemote = {
+      userId: rivalUserId,
+      type: CharacterType.Human,
+      x: 0,
+      hitboxY: 0,
+      globalSubLane: 0,
+    };
+    this.choiceDeadlineMs = deadlineWallMs;
+    this.showOverlay();
+  }
+
+  /** Closes an auth dilemma overlay without applying local outcomes. */
+  endAuthEncounter(): void {
+    this.authChoiceHandler = null;
+    this.activeEncounterId = null;
+    this.activeRemote = null;
+    this.hideOverlay();
+  }
+
   tick(player: Player, nowMs: number): DilemmaOutcome | null {
     if (player.getIsDead()) {
       this.hideOverlay();
       return null;
     }
 
-    // DAVOS — airborne; no same-species dilemma prompts.
+    // Auth encounters are driven by the server — only update the timer UI.
+    if (this.authChoiceHandler && this.overlayVisible) {
+      const remaining = Math.max(0, this.choiceDeadlineMs - nowMs);
+      this.hud?.timer.setText(`Choose: ${(remaining / 1000).toFixed(1)}s`);
+      if (remaining <= 0) {
+        this.flashAutoCooperate(() => this.resolveChoice('cooperate', true));
+      }
+      return null;
+    }
+
+    // DAVOS — airborne; no same-species dilemma prompts (solo / legacy only).
     if (player.isFlightModeVisual()) {
       this.hideOverlay();
       return null;
@@ -331,6 +379,15 @@ export class PrisonersDilemmaManager {
       return 'timeout-cooperate';
     }
 
+    if (this.authChoiceHandler) {
+      const choice = isTimeout ? 'cooperate' : playerChoice;
+      const handler = this.authChoiceHandler;
+      this.authChoiceHandler = null;
+      this.hideOverlay();
+      handler(choice);
+      return isTimeout ? 'timeout-cooperate' : this.outcomeMatrix(choice, 'cooperate');
+    }
+
     if (this.activeEncounterId && this.activeRemote && this.localUserId && this.session) {
       return this.resolveRemoteChoice(playerChoice, isTimeout);
     }
@@ -498,6 +555,7 @@ export class PrisonersDilemmaManager {
     this.activeNpc = null;
     this.activeRemote = null;
     this.activeEncounterId = null;
+    this.authChoiceHandler = null;
     this.encounteredNpcSlots.clear();
     this.encounteredRemoteIds.clear();
     this.pendingEncounters.clear();
