@@ -155,13 +155,18 @@ export class NpcManager {
   /** All visible runners for lighting / shadows. */
   getVisibleRunners(): { x: number; y: number; runner: LaneNpc }[] {
     const list: { x: number; y: number; runner: LaneNpc }[] = [];
+    this.collectVisibleRunners((runner) => list.push({ x: runner.x, y: runner.y, runner }));
+    return list;
+  }
+
+  /** Allocation-free variant of {@link getVisibleRunners} for the per-frame lighting pass. */
+  collectVisibleRunners(visit: (runner: LaneNpc) => void): void {
     for (const npc of this.npcs) {
       if (npc.excluded || !npc.runner.visible || npc.runner.getIsDead()) {
         continue;
       }
-      list.push({ x: npc.runner.x, y: npc.runner.y, runner: npc.runner });
+      visit(npc.runner);
     }
-    return list;
   }
 
   eliminateNpc(npc: NpcEntry): void {

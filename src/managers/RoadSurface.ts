@@ -1,15 +1,18 @@
 import Phaser from 'phaser';
-import { TUNING } from '../config/tuning';
-import { COLORS, GAME_HEIGHT, ux } from '../utils/constants';
+import { COLORS, GAME_HEIGHT } from '../utils/constants';
 import { RoadScroll } from './RoadScroll';
 
-type ScrollTile = Phaser.GameObjects.Rectangle | Phaser.GameObjects.TileSprite;
-
-/** Scrolling asphalt only on the playable lane strip (sub-lanes 0–8). */
+/**
+ * Scrolling asphalt only on the playable lane strip (sub-lanes 0–8).
+ *
+ * One full-height base rectangle plus ONE full-height grain TileSprite whose
+ * `tilePositionY` scrolls. The previous version stacked ~15 rectangle + ~15
+ * TileSprite tiles (each TileSprite owns its own GL texture), which cost ~30
+ * transforms and texture binds per frame for a visually identical result.
+ */
 export class RoadSurface {
-  private readonly tiles: ScrollTile[] = [];
-  private readonly tileHeight: number;
-  private readonly tilesPerBand: number;
+  private readonly base: Phaser.GameObjects.Rectangle;
+  private readonly grain: Phaser.GameObjects.TileSprite | null;
   private readonly unsubscribe: () => void;
 
   constructor(
@@ -19,44 +22,36 @@ export class RoadSurface {
     roadWidth: number,
     roadCenterX: number,
   ) {
-    this.tileHeight = ux(TUNING.track.tileHeight);
-    this.tilesPerBand = Math.ceil(GAME_HEIGHT / this.tileHeight) + 2;
+    this.base = scene.add
+      .rectangle(roadCenterX, GAME_HEIGHT / 2, roadWidth, GAME_HEIGHT, COLORS.road, 1)
+      .setDepth(-2);
+    container.add(this.base);
 
-    for (let i = 0; i < this.tilesPerBand; i++) {
-      const y = i * this.tileHeight + this.tileHeight / 2;
-      const base = scene.add
-        .rectangle(roadCenterX, y, roadWidth, this.tileHeight, COLORS.road, 1)
-        .setDepth(-2);
-      container.add(base);
-      this.tiles.push(base);
-
-      const grain = scene.add
-        .tileSprite(roadCenterX, y, roadWidth, this.tileHeight, 'asphalt-grain')
+    if (scene.textures.exists('asphalt-grain')) {
+      this.grain = scene.add
+        .tileSprite(roadCenterX, GAME_HEIGHT / 2, roadWidth, GAME_HEIGHT, 'asphalt-grain')
         .setDepth(-1)
         .setAlpha(0.14);
-      container.add(grain);
-      this.tiles.push(grain);
+      container.add(this.grain);
+    } else {
+      this.grain = null;
     }
 
     this.unsubscribe = roadScroll.onScroll((deltaY) => this.scroll(deltaY));
   }
 
   private scroll(deltaY: number): void {
-    const wrapSpan = this.tilesPerBand * this.tileHeight;
-    this.tiles.forEach((tile) => {
-      if (tile instanceof Phaser.GameObjects.TileSprite) {
-        tile.tilePositionY += deltaY * 0.25;
-      }
-      tile.y += deltaY;
-      if (tile.y > GAME_HEIGHT + this.tileHeight) {
-        tile.y -= wrapSpan;
-      }
-    });
+    if (!this.grain) {
+      return;
+    }
+    // Old tiles moved down at road speed while their texture crawled up at
+    // 0.25× — net grain drift 0.75× road speed. Keep that feel.
+    this.grain.tilePositionY -= deltaY * 0.75;
   }
 
   destroy(): void {
     this.unsubscribe();
-    this.tiles.forEach((t) => t.destroy());
-    this.tiles.length = 0;
+    this.base.destroy();
+    this.grain?.destroy();
   }
 }

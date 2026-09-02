@@ -21,6 +21,7 @@ import { getAbility } from '../config/abilities';
 import { PROP_TEXTURE_KEYS } from '../config/propAssets';
 import { TUNING } from '../config/tuning';
 import { GAME_HEIGHT, ux } from '../utils/constants';
+import { ImagePool } from '../utils/imagePool';
 import { subLaneCenterX } from './SubLaneManager';
 import type { HazardSnapshotDto } from '../net/AuthoritativeRaceClient';
 
@@ -29,16 +30,28 @@ const DEPTH_MANHOLE = 2;
 const DEPTH_TRASH = 3;
 const DEPTH_PICKUP = 4;
 
+interface HazardSprite {
+  sprite: Phaser.GameObjects.Image;
+  /** Render pass in which the server last listed this hazard. */
+  seenPass: number;
+}
+
 export class AuthWorldRenderer {
   /** Live hazard sprites keyed by the server hazard id. */
-  private readonly sprites = new Map<number, Phaser.GameObjects.Image>();
+  private readonly sprites = new Map<number, HazardSprite>();
+  /** Recycled images — snapshots add/remove hazards constantly during a race. */
+  private readonly pool: ImagePool;
+  /** Monotonic counter; replaces a per-frame `Set` of present ids (no allocation). */
+  private pass = 0;
 
   constructor(
-    private readonly scene: Phaser.Scene,
-    private readonly container: Phaser.GameObjects.Container,
+    scene: Phaser.Scene,
+    container: Phaser.GameObjects.Container,
     private readonly groundY: number,
     private readonly subLaneWidth: number,
-  ) {}
+  ) {
+    this.pool = new ImagePool(scene, container);
+  }
 
   /**
    * Reconciles hazard sprites with the current server hazards. Positions are
@@ -53,7 +66,7 @@ export class AuthWorldRenderer {
    * @param selfUserId when set, hide pickups this player already collected on the server.
    */
   render(hazards: HazardSnapshotDto[], selfDistance: number, selfUserId?: string | null): void {
-    const present = new Set<number>();
+    const pass = ++this.pass;
     for (const hazard of hazards) {
       // Per-player pickup resolve: keep the prop in the world for others, hide for collector.
       if (
@@ -63,32 +76,36 @@ export class AuthWorldRenderer {
       ) {
         const existing = this.sprites.get(hazard.id);
         if (existing) {
-          existing.setVisible(false);
+          existing.sprite.setVisible(false);
+          existing.seenPass = pass;
         }
         continue;
       }
-      present.add(hazard.id);
       // Server coords are logical; screen space is DPR-scaled.
       const screenY = this.groundY - ux(hazard.worldY - selfDistance);
+      let entry = this.sprites.get(hazard.id);
       // Skip drawing hazards well off-screen (still tracked, just not shown).
       if (screenY < -ux(120) || screenY > GAME_HEIGHT + ux(120)) {
-        this.sprites.get(hazard.id)?.setVisible(false);
+        if (entry) {
+          entry.sprite.setVisible(false);
+          entry.seenPass = pass;
+        }
         continue;
       }
-      let sprite = this.sprites.get(hazard.id);
-      if (!sprite) {
-        sprite = this.createSprite(hazard);
-        this.sprites.set(hazard.id, sprite);
+      if (!entry) {
+        entry = { sprite: this.createSprite(hazard), seenPass: pass };
+        this.sprites.set(hazard.id, entry);
       }
-      sprite.setVisible(true);
-      sprite.x = subLaneCenterX(hazard.lane, this.subLaneWidth);
-      sprite.y = screenY;
+      entry.seenPass = pass;
+      entry.sprite.setVisible(true);
+      entry.sprite.x = subLaneCenterX(hazard.lane, this.subLaneWidth);
+      entry.sprite.y = screenY;
     }
 
-    // Destroy sprites for hazards the server has pruned.
-    for (const [id, sprite] of this.sprites) {
-      if (!present.has(id)) {
-        sprite.destroy();
+    // Recycle sprites for hazards the server has pruned.
+    for (const [id, entry] of this.sprites) {
+      if (entry.seenPass !== pass) {
+        this.pool.release(entry.sprite);
         this.sprites.delete(id);
       }
     }
@@ -128,8 +145,8 @@ export class AuthWorldRenderer {
       depth = DEPTH_TRASH;
     }
 
-    const sprite = this.scene.add
-      .image(0, 0, textureKey)
+    const sprite = this.pool
+      .acquire(0, 0, textureKey)
       .setOrigin(origin[0], origin[1])
       .setDepth(depth);
     if (hazard.kind === 'manhole') {
@@ -143,7 +160,6 @@ export class AuthWorldRenderer {
     if (typeof hazard.angle === 'number') {
       sprite.setAngle(hazard.angle);
     }
-    this.container.add(sprite);
     return sprite;
   }
 
@@ -159,7 +175,8 @@ export class AuthWorldRenderer {
   }
 
   destroy(): void {
-    this.sprites.forEach((sprite) => sprite.destroy());
+    this.sprites.forEach((entry) => entry.sprite.destroy());
     this.sprites.clear();
+    this.pool.destroy();
   }
 }

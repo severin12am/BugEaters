@@ -18,6 +18,7 @@ const DEPTH_LAMP_POST = 1;
  */
 export class RoadsideLampManager {
   private readonly lamps: LampHandle[] = [];
+  private readonly lampPoints: { x: number; y: number }[] = [];
   private readonly unsubscribe: () => void;
   private readonly leftX: number;
   private readonly rightX: number;
@@ -43,8 +44,24 @@ export class RoadsideLampManager {
     this.msSinceLastSpawn = cfg.minSpacingSec * 1000;
   }
 
+  /**
+   * Lamp positions for lighting + audio. Called twice per frame, so the array
+   * and its points are reused (no per-frame allocation).
+   */
   getActiveLamps(): readonly { x: number; y: number }[] {
-    return this.lamps.map((l) => ({ x: l.sprite.x, y: l.sprite.y }));
+    const out = this.lampPoints;
+    out.length = this.lamps.length;
+    for (let i = 0; i < this.lamps.length; i++) {
+      const sprite = this.lamps[i].sprite;
+      let point = out[i];
+      if (!point) {
+        point = { x: 0, y: 0 };
+        out[i] = point;
+      }
+      point.x = sprite.x;
+      point.y = sprite.y;
+    }
+    return out;
   }
 
   tickSpawning(deltaMs: number, raceDistance: number): void {
@@ -87,7 +104,8 @@ export class RoadsideLampManager {
     const sprite = this.scene.add
       .image(x, spawnY, key)
       .setOrigin(0.5, 1)
-      .setDepth(DEPTH_LAMP_POST);
+      .setDepth(DEPTH_LAMP_POST)
+      .setVisible(spawnY > -ux(4));
     sprite.setScale(displayH / sprite.height);
     this.container.add(sprite);
     this.lamps.push({ sprite });
@@ -96,11 +114,16 @@ export class RoadsideLampManager {
 
   private scroll(deltaY: number): void {
     for (let i = this.lamps.length - 1; i >= 0; i--) {
-      this.lamps[i].sprite.y += deltaY;
-      if (this.lamps[i].sprite.y > GAME_HEIGHT + ux(80)) {
-        this.lamps[i].sprite.destroy();
+      const sprite = this.lamps[i].sprite;
+      sprite.y += deltaY;
+      if (sprite.y > GAME_HEIGHT + ux(80)) {
+        sprite.destroy();
         this.lamps.splice(i, 1);
+        continue;
       }
+      // Lamps spawn up to ~900 logical px above the screen; skip their draw
+      // (transform + batch) until the pole art can actually be seen.
+      sprite.setVisible(sprite.y > -ux(4));
     }
   }
 

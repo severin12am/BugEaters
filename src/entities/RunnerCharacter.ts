@@ -12,6 +12,33 @@ import {
 } from '../utils/abilityVfx';
 import type { AbilityKind } from '../config/abilities';
 import { CharacterType, COLORS, ux } from '../utils/constants';
+import { PERF_PROFILE } from '../utils/perf';
+
+const SOFT_DOT_TEXTURE_KEY = 'vfx-soft-dot';
+const SOFT_DOT_TEXTURE_PX = 32;
+
+/** Small radial white dot used for pooled smoke puffs (replaces per-puff Arc shapes). */
+function ensureSoftDotTexture(scene: Phaser.Scene): void {
+  if (scene.textures.exists(SOFT_DOT_TEXTURE_KEY)) {
+    return;
+  }
+  const size = SOFT_DOT_TEXTURE_PX;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return;
+  }
+  const half = size / 2;
+  const gradient = ctx.createRadialGradient(half, half, 0, half, half, half);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.7, 'rgba(255,255,255,0.9)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  scene.textures.addCanvas(SOFT_DOT_TEXTURE_KEY, canvas);
+}
 
 /**
  * Shared runner used by the player and lane NPCs — Unity walk-cycle sprites.
@@ -33,7 +60,8 @@ export class RunnerCharacter extends Phaser.GameObjects.Container {
   private statusTint: number | null = null;
   private flightPlane: Phaser.GameObjects.Image | null = null;
   private flightSmokeTimer: Phaser.Time.TimerEvent | null = null;
-  private readonly flightSmoke: Phaser.GameObjects.Arc[] = [];
+  private readonly flightSmoke: Phaser.GameObjects.Image[] = [];
+  private readonly flightSmokeFree: Phaser.GameObjects.Image[] = [];
   private spriteBaseY = 0;
   private flightActive = false;
   private flightExiting = false;
@@ -469,30 +497,47 @@ export class RunnerCharacter extends Phaser.GameObjects.Container {
       puff.destroy();
     }
     this.flightSmoke.length = 0;
+    for (const puff of this.flightSmokeFree) {
+      puff.destroy();
+    }
+    this.flightSmokeFree.length = 0;
   }
 
-  /** Smoke from the tail (rear of nose-up jet = toward bottom of screen). */
+  /**
+   * Smoke from the tail (rear of nose-up jet = toward bottom of screen).
+   * Puffs are pooled textured images, not fresh Arc shapes: the old version
+   * created and destroyed ~65 tessellated circles per second while flying.
+   */
   private emitFlightSmoke(): void {
     if (this.isDead || !this.flightActive || !this.flightPlane?.visible) {
       return;
     }
+    ensureSoftDotTexture(this.scene);
     const plane = this.flightPlane;
     const tailY = plane.y + plane.displayHeight * 0.45;
-    for (let i = 0; i < 3; i++) {
-      const puff = this.scene.add.circle(
-        plane.x + Phaser.Math.Between(-ux(8), ux(8)),
-        tailY + Phaser.Math.Between(0, ux(6)),
-        Phaser.Math.Between(ux(6), ux(14)),
-        0xffffff,
-        0.42,
-      );
-      this.add(puff);
+    for (let i = 0; i < PERF_PROFILE.flightSmokePuffs; i++) {
+      const radius = Phaser.Math.Between(ux(6), ux(14));
+      const startX = plane.x + Phaser.Math.Between(-ux(8), ux(8));
+      const startY = tailY + Phaser.Math.Between(0, ux(6));
+      const recycled = this.flightSmokeFree.pop();
+      let puff: Phaser.GameObjects.Image;
+      if (recycled && recycled.scene) {
+        puff = recycled;
+      } else {
+        puff = this.scene.add.image(startX, startY, SOFT_DOT_TEXTURE_KEY);
+        this.add(puff);
+      }
+      puff.setPosition(startX, startY);
+      puff.setScale((radius * 2) / SOFT_DOT_TEXTURE_PX);
+      puff.setAlpha(0.42);
+      puff.setVisible(true);
       this.flightSmoke.push(puff);
+      const baseScale = puff.scale;
       this.scene.tweens.add({
         targets: puff,
-        y: puff.y + ux(70),
-        x: puff.x + Phaser.Math.Between(-ux(18), ux(18)),
-        scale: 2.1,
+        y: startY + ux(70),
+        x: startX + Phaser.Math.Between(-ux(18), ux(18)),
+        scale: baseScale * 2.1,
         alpha: 0,
         duration: Phaser.Math.Between(480, 760),
         ease: 'Cubic.easeOut',
@@ -501,7 +546,8 @@ export class RunnerCharacter extends Phaser.GameObjects.Container {
           if (idx !== -1) {
             this.flightSmoke.splice(idx, 1);
           }
-          puff.destroy();
+          puff.setVisible(false);
+          this.flightSmokeFree.push(puff);
         },
       });
     }

@@ -2,14 +2,18 @@ import Phaser from 'phaser';
 import { LIGHTING_TUNING } from '../config/lighting';
 import { GAME_HEIGHT, ux } from '../utils/constants';
 import { LampPoint, sampleLampLight } from '../utils/lampLight';
+import { PERF_PROFILE } from '../utils/perf';
 import type { RunnerCharacter } from '../entities/RunnerCharacter';
 import { FlashlightConeVfx } from '../utils/flashlightCone';
 
-interface RunnerPoint {
+export interface RunnerPoint {
   x: number;
   y: number;
   runner: RunnerCharacter;
 }
+
+/** Base ellipse size; actual shadow dimensions are applied via scale. */
+const SHADOW_UNIT_PX = 64;
 
 /**
  * Unity-style lighting: darkness veil, intense ADD pools, alpha visibility, cast shadows.
@@ -19,6 +23,7 @@ export class LampLightingManager {
   private readonly castShadows: Phaser.GameObjects.Ellipse[] = [];
   private readonly poolTextureKey = 'lamp-pool-gradient-soft';
   private readonly flashlightCone: FlashlightConeVfx;
+  private readonly shadowsEnabled = PERF_PROFILE.castShadows;
   private darknessVeil: Phaser.GameObjects.Rectangle | null = null;
   private flashlightBoost = false;
   private backdropWidth = 0;
@@ -151,7 +156,7 @@ export class LampLightingManager {
       const { brightness, nearest } = sampleLampLight(x, y, lamps, radius);
       runner.applyLampLighting(brightness, nearest);
 
-      if (brightness < 0.08 || !nearest) {
+      if (!this.shadowsEnabled || brightness < 0.08 || !nearest) {
         continue;
       }
 
@@ -174,7 +179,16 @@ export class LampLightingManager {
 
       let shadow = this.castShadows[shadowIndex];
       if (!shadow) {
-        shadow = this.scene.add.ellipse(0, 0, width, length, 0x000000, cfg.castShadowAlpha);
+        // Unit-size ellipse; per-frame size changes go through scale so the
+        // shape geometry is never rebuilt (Ellipse.setSize re-tessellates).
+        shadow = this.scene.add.ellipse(
+          0,
+          0,
+          SHADOW_UNIT_PX,
+          SHADOW_UNIT_PX,
+          0x000000,
+          cfg.castShadowAlpha,
+        );
         shadow.setOrigin(0.5, 0.5);
         this.propsContainer.add(shadow);
         this.castShadows[shadowIndex] = shadow;
@@ -182,7 +196,7 @@ export class LampLightingManager {
 
       shadow.setVisible(true);
       shadow.setPosition(shadowX, shadowY);
-      shadow.setSize(width, length);
+      shadow.setScale(width / SHADOW_UNIT_PX, length / SHADOW_UNIT_PX);
       shadow.setRotation(angleRad + Math.PI / 2);
       shadow.setAlpha(cfg.castShadowAlpha * brightness);
       shadowIndex++;

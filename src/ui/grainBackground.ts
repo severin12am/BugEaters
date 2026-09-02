@@ -46,11 +46,15 @@ export function addMonoScreenBackground(scene: Phaser.Scene): Phaser.GameObjects
       .setAlpha(MONO.grainAlpha)
       .setTileScale(2, 2);
     root.add(grain);
-    scene.events.on('update', (_time: number, delta: number) => {
+    const drift = (_time: number, delta: number): void => {
       if (grain.active) {
         grain.tilePositionY += delta * 0.012;
       }
-    });
+    };
+    scene.events.on('update', drift);
+    // Menus rebuild this background often; drop the listener with the grain so
+    // dead callbacks don't pile up on the scene's update event.
+    grain.once('destroy', () => scene.events.off('update', drift));
   }
 
   return root;

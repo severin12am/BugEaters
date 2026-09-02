@@ -16,7 +16,11 @@ import {
   createSectionGlyph,
   isDiagramId,
 } from '../ui/encyclopediaDiagrams';
-import { createGuideShotCard } from '../ui/encyclopediaShots';
+import {
+  createGuideShotCard,
+  hasPendingGuideShots,
+  preloadGuideShots,
+} from '../ui/encyclopediaShots';
 import {
   getAbilityGuideCards,
   getEncyclopediaSection,
@@ -43,6 +47,16 @@ export class EncyclopediaScene extends Phaser.Scene {
 
   constructor() {
     super({ key: 'EncyclopediaScene' });
+  }
+
+  /** Guide photos are large; fetch them only when the guide is actually opened. */
+  preload(): void {
+    if (!hasPendingGuideShots(this)) {
+      return;
+    }
+    createMonoText(this, GAME_WIDTH / 2, getContentTopY(this, 72), 'Loading photos…', 'caption')
+      .setOrigin(0.5);
+    preloadGuideShots(this);
   }
 
   create(data?: { sectionId?: string; from?: string }): void {
