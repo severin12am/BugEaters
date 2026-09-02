@@ -70,7 +70,7 @@ import {
   FrameMonitor,
   isFpsHudRequested,
   PERF_PROFILE,
-  rememberLowTierFromRace,
+  recordRaceQuality,
 } from '../utils/perf';
 import { REGISTRY_KEYS, type AuthLocalRaceOptions } from './BootScene';
 
@@ -933,14 +933,14 @@ export class GameScene extends Phaser.Scene {
     this.hudObjects.push(this.timerText, this.distanceText);
 
     if (isFpsHudRequested() || this.isLab) {
-      this.fpsText = gameText(this, ux(10), getHudTopY(this) - ux(10), '', {
+      this.fpsText = gameText(this, ux(8), getHudTopY(this) - ux(14), '', {
         fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: fontSize(11),
+        fontSize: fontSize(10),
         color: '#9be29b',
         backgroundColor: '#000000aa',
         padding: { x: ux(4), y: ux(2) },
       })
-        .setOrigin(0, 0.5)
+        .setOrigin(0, 0)
         .setDepth(101);
       this.hudObjects.push(this.fpsText);
       this.refreshFpsHud();
@@ -1852,10 +1852,10 @@ export class GameScene extends Phaser.Scene {
     }
     const fps = this.frameMonitor.fps;
     const slowPct = Math.round(this.frameMonitor.recentSlowShare * 100);
-    this.fpsText.setText(
-      `${fps > 0 ? Math.round(fps) : '--'} fps · ${slowPct}% slow · ` +
-        `DPR ${DISPLAY_DPR} · ${PERF_PROFILE.tier} (${PERF_PROFILE.source})`,
-    );
+    this.fpsText.setText([
+      `${fps > 0 ? Math.round(fps) : '--'} fps · ${slowPct}% slow`,
+      `DPR ${DISPLAY_DPR.toFixed(2)} · ${PERF_PROFILE.tier} (${PERF_PROFILE.source})`,
+    ]);
   }
 
   /**
@@ -1868,11 +1868,19 @@ export class GameScene extends Phaser.Scene {
     }
     this.frameMonitorConcluded = true;
     const monitor = this.frameMonitor;
+    if (monitor.sampledFrames === 0) {
+      return;
+    }
     const summary =
       `avg ${monitor.averageFps.toFixed(1)} fps, ` +
       `${Math.round(monitor.slowShare * 100)}% slow frames over ${monitor.sampledFrames} frames`;
-    if (monitor.ranPoorly() && rememberLowTierFromRace()) {
+    const verdict = recordRaceQuality(monitor.ranPoorly());
+    if (verdict === 'downgraded') {
       console.info(`[perf] race ran poorly (${summary}) — next launch uses the low tier`);
+      return;
+    }
+    if (verdict === 'poor') {
+      console.info(`[perf] race ran poorly (${summary}) — one more and the low tier kicks in`);
       return;
     }
     console.info(`[perf] race frames: ${summary} (tier ${PERF_PROFILE.tier})`);

@@ -32,6 +32,7 @@ export interface PerfProfile {
 
 const MODE_KEY = 'bugeaters.perf.mode';
 const AUTO_KEY = 'bugeaters.perf.auto';
+const POOR_STREAK_KEY = 'bugeaters.perf.poorRaces';
 const URL_PARAM = 'perf';
 
 function readStorage(key: string): string | null {
@@ -97,6 +98,7 @@ function resolveTier(): { tier: PerfTier; source: PerfProfile['source'] } {
   if (fromUrl === 'auto') {
     writeStorage(MODE_KEY, null);
     writeStorage(AUTO_KEY, null);
+    writeStorage(POOR_STREAK_KEY, null);
   } else {
     const urlTier = parseTier(fromUrl);
     if (urlTier) {
@@ -142,25 +144,71 @@ function buildProfile(tier: PerfTier, source: PerfProfile['source']): PerfProfil
   };
 }
 
+/**
+ * Largest DPR at which the internal canvas still fits the PHYSICAL screen.
+ *
+ * The canvas is always laid out as 390×844 logical px × DPR, then FIT-scaled
+ * into the viewport. On smaller phones (iPhone 8: 750×1334 device px) a DPR-2
+ * canvas (780×1688) is rendered and then shrunk — ~30% of every frame's fill
+ * is thrown away. Capping at the screen's real pixel size costs no sharpness.
+ * `screen.*` is used (not the viewport) because Telegram resizes the viewport
+ * after boot.
+ */
+export function screenPixelDprCap(
+  logicalWidth: number,
+  logicalHeight: number,
+  screenLike: { width?: number; height?: number; dpr?: number } = {
+    width: typeof screen !== 'undefined' ? screen.width : undefined,
+    height: typeof screen !== 'undefined' ? screen.height : undefined,
+    dpr: typeof window !== 'undefined' ? window.devicePixelRatio : undefined,
+  },
+): number {
+  const w = screenLike.width ?? 0;
+  const h = screenLike.height ?? 0;
+  const dpr = screenLike.dpr ?? 1;
+  if (!(w > 0) || !(h > 0) || !(dpr > 0)) {
+    return Number.POSITIVE_INFINITY;
+  }
+  // Portrait game: pair the short screen side with logical width.
+  const physShort = Math.min(w, h) * dpr;
+  const physLong = Math.max(w, h) * dpr;
+  const cap = Math.min(physShort / logicalWidth, physLong / logicalHeight);
+  // Never go below 1 (tiny screens still get a full-res logical canvas).
+  return Math.max(1, Math.round(cap * 100) / 100);
+}
+
 const resolved = resolveTier();
 
 /** The active profile for this page load. Canvas size is derived from it. */
 export const PERF_PROFILE: PerfProfile = buildProfile(resolved.tier, resolved.source);
 
+/** Consecutive poor races needed before the low tier is stored (one bad race can be a background download). */
+export const POOR_RACES_TO_DOWNGRADE = 2;
+
 /**
- * Called by the in-race frame monitor when a full race ran badly. Takes effect
- * on the next launch (the canvas size cannot change mid-session). Never
- * overrides an explicit user/URL choice.
+ * Called by the in-race frame monitor at the end of every race. After
+ * {@link POOR_RACES_TO_DOWNGRADE} poor races in a row the low tier is stored and
+ * takes effect on the next launch (the canvas size cannot change mid-session).
+ * A smooth race resets the streak. Never overrides an explicit user/URL choice.
+ *
+ * @returns 'downgraded' when the low tier was just stored.
  */
-export function rememberLowTierFromRace(): boolean {
-  if (PERF_PROFILE.tier === 'low') {
-    return false;
+export function recordRaceQuality(poor: boolean): 'downgraded' | 'poor' | 'ok' | 'ignored' {
+  if (PERF_PROFILE.tier === 'low' || parseTier(readStorage(MODE_KEY))) {
+    return 'ignored';
   }
-  if (parseTier(readStorage(MODE_KEY))) {
-    return false;
+  if (!poor) {
+    writeStorage(POOR_STREAK_KEY, null);
+    return 'ok';
   }
-  writeStorage(AUTO_KEY, 'low');
-  return true;
+  const streak = Number(readStorage(POOR_STREAK_KEY) ?? '0') + 1;
+  if (streak >= POOR_RACES_TO_DOWNGRADE) {
+    writeStorage(POOR_STREAK_KEY, null);
+    writeStorage(AUTO_KEY, 'low');
+    return 'downgraded';
+  }
+  writeStorage(POOR_STREAK_KEY, String(streak));
+  return 'poor';
 }
 
 /** Frame-time thresholds shared by the monitor and the HUD readout. */

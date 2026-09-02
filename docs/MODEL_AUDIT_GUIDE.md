@@ -64,6 +64,7 @@ Playtest menu (DevSessionScene)
 | Needle miss | Aim must be **logical** px (`/ DISPLAY_DPR`); deferred activate then aim |
 | No eat (Human vs Bug) | `eatingSystem.ts` (proximity, not same-lane-only); remote `x` placement |
 | Laggy / hitchy auth race | `distanceExtrapolator.ts` + `AuthoritativeRaceClient` (20Hz snapshots must be extrapolated; do not draw raw `distance`) |
+| Low fps / stutter on a weak phone (any path) | `src/utils/perf.ts` (tier → DPR cap, MSAA, shadows; `?perf=low` to force, `?perf=auto` to reset; two races in a row with ≥20% slow frames store the low tier for the next launch). Open `?abilityLab=1&fps=1` (or add `&fps=1` to any race) for the fps / hitch / DPR / tier readout. Hot paths: `LampLightingManager` (veil + ADD pools = fill rate), `RoadSurface` / `RoadEdgeMarkers` (single TileSprites — do not re-add per-tile objects), `ObstacleManager` / `AuthWorldRenderer` (`ImagePool`, off-screen props hidden), `textureBudget.ts` (prop PNG shrink at boot) |
 | Sounds in menu | `AudioManager.destroy` / `stopRace` |
 | Practice again / Testing dumps into leftover timer | `devTicketRoute.ts` join window is **15s before start only**; each wave has its own Colyseus `raceRoomId`. Client must join `claims.roomId`, POST lobby `local-practice` |
 | Practice again needs reload | `EndScene.practiceAgain` must mint **new** `/dev/ticket` against the lobby id |
@@ -110,7 +111,9 @@ Playtest menu (DevSessionScene)
 | `src/config/abilities.ts` | 12 ability ids/names |
 | `src/utils/raceVisual.ts` | `authRivalGapToScreenOffset` |
 | `src/utils/eatingRules.ts` | Food chain |
-| `src/utils/layout.ts` | `ux()` / `DISPLAY_DPR` |
+| `src/utils/layout.ts` | `ux()` / `DISPLAY_DPR` (cap comes from `perf.ts`) |
+| `src/utils/perf.ts` | Perf tier + `FrameMonitor`; `?perf=` / `?fps=1` switches |
+| `src/utils/imagePool.ts` · `textureBudget.ts` | Prop image recycling · boot-time texture shrink |
 
 ### Authoritative client net
 
@@ -227,6 +230,9 @@ npm run race-server:test
 # Client net (extrapolation / clock)
 npm run test:client-net
 
+# Client perf tier + frame monitor
+npm run test:client-perf
+
 # Two live clients on one local room
 npm run smoke:auth-two-client
 
@@ -242,6 +248,8 @@ flyctl scale count 1 -a bugeaters-race
 ```
 
 **Two-phone smoke:** Testing → 15s wait → Bug left + Human mid → trash sticks → pickup arms HUD → Open Borders crosses when active → flashlight cone → die or finish → Practice again both within 15s (new countdown, not leftover timer).
+
+**Smoothness smoke (weak phone):** open `<pages-url>/?abilityLab=1&fps=1` — the green top-left readout shows `fps · % slow · DPR · tier (source)`. Fire DAVOS BROS + CBDC RUN + SHAREHOLDER together; `% slow` should stay low. Compare with `&perf=low` (DPR 1.5, no MSAA/shadows). After two laggy real races in a row the console logs `[perf] race ran poorly … next launch uses the low tier`; `?perf=auto` clears it.
 
 ---
 

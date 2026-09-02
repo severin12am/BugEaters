@@ -223,6 +223,9 @@ Server minter: `server/src/ton/` (`nftCollection.ts` cell builders, `tonClient.t
 | `rng.ts` | Seeded PRNG for obstacles/dividers |
 | `telegram.ts` | Telegram viewport / expand |
 | **`abilityVfx.ts`** | Defensive ring, speed streaks on activate |
+| **`perf.ts`** | Device perf tier (DPR cap 2 / 1.5, MSAA, shadows), `?perf=low\|high\|auto`, `FrameMonitor` auto-learn, `?fps=1` |
+| `imagePool.ts` | Recycled prop images for `ObstacleManager` / `AuthWorldRenderer` |
+| `textureBudget.ts` | Boot-time shrink of oversized prop PNGs to ~2× display size |
 
 ---
 
