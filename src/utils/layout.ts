@@ -152,6 +152,8 @@ declare global {
         safeAreaInset?: SafeAreaInsets;
         contentSafeAreaInset?: SafeAreaInsets;
         onEvent?: (event: string, callback: () => void) => void;
+        /** Opens an external URL in the system browser (keeps the Mini App alive). */
+        openLink?: (url: string, options?: { try_instant_view?: boolean }) => void;
         /** Raw signed init data string used for server-side auth verification. */
         initData?: string;
         initDataUnsafe?: {

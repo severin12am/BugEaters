@@ -87,6 +87,17 @@ node scripts/auth-race-smoke.mjs
 $env:RACE_SMOKE_URL="https://bugeaters-race.fly.dev"; node scripts/auth-race-smoke.mjs
 ```
 
+## 4b. TON pass NFTs (testnet)
+
+Wallet link, pass mint, burn-to-enter and the champion token are wired end to
+end; they stay dormant until the secrets exist. Follow
+[`TON_TESTNET_RUNBOOK.md`](./TON_TESTNET_RUNBOOK.md): deploy the collection
+(`npm run ton:deploy-collection`), set the Fly minter secrets
+(`TON_TREASURY_MNEMONIC`, `NFT_COLLECTION_ADDRESS`, `NFT_META_BASE_URL`,
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`), the Supabase function secrets,
+the Pages `VITE_TONCONNECT_*` vars, then flip `game_config.pass_required_onchain`.
+The minter runs inside the race server — another reason to keep **1 machine**.
+
 ## 5. Redis later (multi-machine)
 
 Not wired yet. When you need >1 Fly machine:

@@ -22,16 +22,18 @@ import {
   type UiButtonResult,
 } from '../ui/UiChrome';
 import { MONO, MONO_CSS } from '../ui/theme';
-import { getChainService } from '../tournament/chain/MockChainService';
+import { getChainService } from '../tournament/chain';
 import {
   assignRoles,
-  confirmPassBurn,
+  burnPass,
+  DEFAULT_CHAIN_CONFIG,
   fetchMyAssignedRole,
   fetchWeekState,
   mapJoinErrorCode,
   refundPassBurn,
   weekContextFromState,
 } from '../tournament/tournamentApi';
+import type { ChainConfig, PassChip } from '../tournament/types';
 import { REGISTRY_KEYS, type AuthLocalRaceOptions } from './BootScene';
 import { isDevSessionUiEnabled } from '../tournament/devSession';
 import { isRaceDevMode, isRaceServerConfigured } from '../net/AuthoritativeRaceClient';
@@ -56,6 +58,8 @@ export class LobbyScene extends Phaser.Scene {
   private burnOverlay: Phaser.GameObjects.Container | null = null;
   private week = weekContextFromState(null);
   private passId: string | null = null;
+  private todayPass: PassChip | null = null;
+  private chainConfig: ChainConfig = DEFAULT_CHAIN_CONFIG;
   private soloBtn: UiButtonResult | null = null;
 
   constructor() {
@@ -99,10 +103,14 @@ export class LobbyScene extends Phaser.Scene {
     }
 
     this.week = weekContextFromState(state);
+    this.chainConfig = state?.chain ?? DEFAULT_CHAIN_CONFIG;
 
-    if (!this.passId && this.week.requiresPass) {
-      const todayPass = this.week.passes.find((p) => p.grantsEntry === this.week.weekday);
-      this.passId = todayPass?.id ?? null;
+    if (this.week.requiresPass) {
+      this.todayPass =
+        this.week.passes.find((p) => p.id === this.passId) ??
+        this.week.passes.find((p) => p.grantsEntry === this.week.weekday) ??
+        null;
+      this.passId = this.todayPass?.id ?? this.passId;
     }
 
     this.burnConfirmed =
@@ -375,13 +383,7 @@ export class LobbyScene extends Phaser.Scene {
     createMonoText(this, cx, panelY + ux(72), `${this.week.weekdayLabel} entry · one race`, 'body').setOrigin(
       0.5,
     );
-    createMonoText(
-      this,
-      cx,
-      panelY + ux(102),
-      'Pass is destroyed when the race starts. Role is assigned 3:2:1.',
-      'caption',
-    )
+    createMonoText(this, cx, panelY + ux(102), this.burnWarningCopy(), 'caption')
       .setOrigin(0.5)
       .setAlign('center')
       .setWordWrapWidth(panelW - ux(32));
@@ -408,14 +410,21 @@ export class LobbyScene extends Phaser.Scene {
     const roomId = this.session.getRoomInfo()!.roomId;
 
     const cx = GAME_WIDTH / 2;
-    const signing = createMonoText(this, cx, GAME_HEIGHT / 2, 'Confirm transaction in wallet…', 'body').setOrigin(
-      0.5,
-    ).setDepth(110);
+    const signing = createMonoText(this, cx, GAME_HEIGHT / 2, 'Preparing burn…', 'body')
+      .setOrigin(0.5)
+      .setAlign('center')
+      .setWordWrapWidth(contentWidth(40))
+      .setDepth(110);
 
     try {
-      const chain = getChainService();
-      const { txHash } = await chain.requestBurnSignature(this.passId);
-      await confirmPassBurn(roomId, txHash);
+      const outcome = await burnPass(getChainService(), this.passId, roomId, (message) => {
+        if (this.live) {
+          signing.setText(message);
+        }
+      });
+      if (!this.live) {
+        return;
+      }
 
       this.burnConfirmed = true;
       this.registry.set(REGISTRY_KEYS.passBurnConfirmed, true);
@@ -425,15 +434,63 @@ export class LobbyScene extends Phaser.Scene {
       this.burnOverlay = null;
       signing.destroy();
 
-      this.statusText.setText('Pass burned · role assigned at race start');
+      this.statusText.setText(
+        outcome.mode === 'onchain'
+          ? 'Pass NFT burned on TON · role assigned at race start'
+          : 'Pass burned · role assigned at race start',
+      );
       this.showReadyButton();
       await this.onReadyTapped();
     } catch (err) {
       signing.destroy();
+      const code = err instanceof Error ? err.message : 'burn failed';
       console.warn('[lobby] burn failed', err);
-      this.statusText.setText('Burn failed — try again');
+      this.statusText.setText(this.burnErrorCopy(code));
     } finally {
       this.burning = false;
+    }
+  }
+
+  /** Whether this burn will be a real TON transfer (irreversible) or a DB-only mock. */
+  private isOnchainBurn(): boolean {
+    return (
+      this.chainConfig.passRequiredOnchain &&
+      this.todayPass?.mintStatus === 'minted' &&
+      Boolean(this.todayPass?.nftAddress)
+    );
+  }
+
+  private burnWarningCopy(): string {
+    if (this.isOnchainBurn()) {
+      return `Your pass NFT #${this.todayPass?.nftIndex ?? '?'} is sent to the burn address on TON. This cannot be undone — leaving the lobby afterwards does not refund it. Role is assigned 3:2:1.`;
+    }
+    if (this.todayPass && this.todayPass.mintStatus !== 'minted' && this.chainConfig.passRequiredOnchain) {
+      return 'Your pass NFT is still minting; it will be consumed as soon as it lands. Role is assigned 3:2:1.';
+    }
+    return 'Pass is destroyed when the race starts. Role is assigned 3:2:1.';
+  }
+
+  private burnErrorCopy(code: string): string {
+    switch (code) {
+      case 'wallet_connect_cancelled':
+      case 'wallet_connect_timeout':
+        return 'Wallet not connected — tap Burn & ready to try again';
+      case 'burn_not_visible':
+        return 'TON has not confirmed the burn yet — tap Burn & ready again in a moment';
+      case 'onchain_burn_required':
+        return 'This pass must be burned from your TON wallet — connect it on the hub';
+      case 'no_wallet':
+      case 'no-wallet':
+        return 'Link your TON wallet on the hub before burning';
+      case 'no_pass':
+      case 'no-pass':
+        return 'No active pass for today';
+      case 'fake_nft':
+        return 'This item is not a BugEaters pass';
+      default:
+        return code.includes('Rejected') || code.includes('reject') || code.includes('cancel')
+          ? 'Transaction rejected in wallet — try again'
+          : `Burn failed — try again (${code.slice(0, 60)})`;
     }
   }
 

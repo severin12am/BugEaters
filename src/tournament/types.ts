@@ -9,11 +9,27 @@ export type TournamentWeekday =
 
 export type WeekdayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 
+export type PassMintStatus = 'pending' | 'minting' | 'minted' | 'failed' | 'skipped';
+
 export interface PassChip {
   id: string;
   grantsEntry: TournamentWeekday;
   wonOn: TournamentWeekday;
   weekId: string;
+  /** TON item address once minted (null while the minter is still working). */
+  nftAddress?: string | null;
+  nftIndex?: number | null;
+  mintStatus?: PassMintStatus;
+}
+
+/** Chain settings the server exposes so the client knows how a burn must happen. */
+export interface ChainConfig {
+  network: 'testnet' | 'mainnet';
+  collectionAddress: string | null;
+  burnAddress: string | null;
+  /** When true a minted pass must be burned on TON (wallet signature) to race. */
+  passRequiredOnchain: boolean;
+  devMode: boolean;
 }
 
 export interface WeekContext {

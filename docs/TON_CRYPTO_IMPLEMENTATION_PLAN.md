@@ -1,8 +1,10 @@
 # BugEaters — TON Blockchain Integration Plan
 
-**Status:** Planning only — no crypto code implemented yet  
-**Last updated:** June 2026  
+**Status:** Implemented on testnet (September 2026) — see [`TON_TESTNET_RUNBOOK.md`](./TON_TESTNET_RUNBOOK.md) for the switch-on steps and file map. This document remains the design rationale.  
+**Last updated:** June 2026 (plan) · September 2026 (status)  
 **Audience:** Developers implementing weekly tournament NFT passes + wallet gating for the Telegram Mini App
+
+> **What shipped vs. this plan:** §6 stack (`@tonconnect/ui`, `@ton/core`/`@ton/ton`, func-js instead of Blueprint), §7 reference TEP-62 collection (vendored in `contracts/`), §8 `src/ton/TonConnectService.ts` + `ton_proof` link (`link-wallet`), §9 on-chain checks (`pass-burn`, `sync-passes`), §10 as `0015_ton_nft.sql`. The weekly model replaces §4/§12 "daily pass": passes are week-scoped, **minted by the race server** to winners and **burned in the lobby** (transfer to `0:00…00`).
 
 > **Product model updated:** Stakeholder decisions changed the design from a simple “calendar daily pass” to a **weekly Monday-start tournament chain**. Read **[`TON_WEEKLY_TOURNAMENT_MODEL.md`](./TON_WEEKLY_TOURNAMENT_MODEL.md)** first; sections below that describe “daily pass / day_key / unlimited races” are **legacy** until rewritten in a future doc pass.
 

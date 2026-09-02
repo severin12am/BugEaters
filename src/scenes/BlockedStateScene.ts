@@ -10,7 +10,7 @@ import {
   createMonoText,
 } from '../ui/UiChrome';
 import { fetchWeekState, weekContextFromState } from '../tournament/tournamentApi';
-import { getChainService } from '../tournament/chain/MockChainService';
+import { getChainService } from '../tournament/chain';
 import { REGISTRY_KEYS } from './BootScene';
 
 type BlockReason =

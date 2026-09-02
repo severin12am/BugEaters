@@ -296,13 +296,16 @@ Monday 00:00 UTC ─────────────────────
 | Billboard rights | Following Monday | Not burned in v1; transferable entitlement |
 
 ### Open / deferred
-- Exact TEP-62 metadata fields
-- On-chain max supply vs DB-enforced cap
-- Real TON Connect + burn transactions
-- Secondary market UI
+- On-chain max supply vs DB-enforced cap (today: DB cap, Sunday ≤ N via `sunday_passes`)
+- Secondary market UI beyond "Import" (passes are standard TEP-62 items, tradable on Getgems)
 
-### Client today
-- **Mock:** wallet connect toggles registry flag; pass chips from `weekClock`; burn modal in lobby; role from client-side weighted random (`roleAssign.ts`) — **not authoritative**.
+### Built (September 2026) — see [`TON_TESTNET_RUNBOOK.md`](./TON_TESTNET_RUNBOOK.md)
+- **Wallet:** TON Connect (`@tonconnect/ui`) with `ton_proof`; `link-wallet` edge function verifies the signature and stores one wallet per Telegram user (`profiles.wallet_address`, unique).
+- **Pass NFT:** standard TEP-62 item in the BugEaters collection (reference contracts, vendored in `contracts/`). Awarded by `record_results*` as a pending row; **minted by the race server** (`server/src/ton/NftMinter.ts`) to the winner's wallet. TEP-64 metadata served by `nft-meta` with `week_id` / `grants_entry` / `won_on` attributes.
+- **Burn:** lobby "Burn & ready" → wallet signs a `transfer` to the burn address `0:00…00` → `pass-burn` verifies `get_nft_data` and seals `pass_burns`. Irreversible; no refund after an on-chain burn.
+- **Champion NFT:** Sunday winner gets a champion item (`tournament_weeks.champion_nft_address`); billboard rights stay a DB entitlement.
+- **Forfeit (I17):** `expire_unlinked_passes` — unminted passes whose winner never linked a wallet within `wallet_link_deadline_hours` expire.
+- **Dev:** `game_config.dev_mode = true` keeps the mock wallet + DB-only burns for playtests; `pass_required_onchain` flips minted passes to mandatory on-chain burns.
 
 ---
 
@@ -333,13 +336,13 @@ Monday 00:00 UTC ─────────────────────
 | **Week Hub** | Week id, day strip, status, passes, wallet, primary CTA | **Built** — routes Mon→Menu, Tue+→Lobby (not ReadyPanel yet) |
 | **Monday register** | Character + time slots | **Built** (`MenuScene`) |
 | **Ready panel** | Tap ready, queue state | **Built** (`ReadyPanelScene`) — **not wired from hub** |
-| **Wallet connect** | TON Connect | **Mock** on hub |
-| **Pass inventory** | By day, expiry | **Partial** — mock chips only |
+| **Wallet connect** | TON Connect | **Built** — real TON Connect + `ton_proof` link on hub / blocked state / end screen; mock only in `dev_mode` |
+| **Pass inventory** | By day, expiry | **Built** — chips show NFT mint state, tap opens explorer; **Import** pulls bought passes |
 | **Lobby v2** | Roster, burn, role reveal, countdown | **Built** — burn gated |
 | **Blocked states** | No pass / wallet / forfeit / wrong day | **Built** (`BlockedStateScene`) — **not wired from hub** |
 | **Sunday finale** | Global framing, qualifier list | **Built** (`SundayFinaleScene`) — **not wired from hub** |
-| **End / advancement** | Pass earned, wallet prompt | **Partial** — static mock copy |
-| **Champion dashboard** | Upload billboard, transfer rights | **Built** — mock actions, **not wired from hub** |
+| **End / advancement** | Pass earned, wallet prompt | **Built** — outcome from `record_results`, mint note, "Link TON wallet" CTA when unlinked |
+| **Champion dashboard** | Upload billboard, transfer rights | **Built** — champion NFT + explorer link, in-app inputs (no `window.prompt`), wired from hub for the champion |
 | **Spectator** | Watch Sunday | **Not built** (open) |
 
 **Dev override:** `?tournamentDay=tuesday` forces weekday for UI testing.
@@ -412,8 +415,8 @@ BootScene → WeekHubScene
 | Authoritative race server | **Live on Fly** — playtest path (`/dev/ticket`); full Supabase ticket/results wiring still to harden |
 | Mini App host | **Live on Cloudflare Pages** — phone via BotFather URL |
 | Backend tournament | **Partial** — schema/RPCs exist; not all production gates |
-| TON / NFT | **Mock only** (acceptable per scope) |
-| Production launch | **No** — §5 + tournament backend + billboards; playtest hosting **yes** |
+| TON / NFT | **Built for testnet** — wallet link, pass mint, burn-to-enter, champion NFT, market import ([`TON_TESTNET_RUNBOOK.md`](./TON_TESTNET_RUNBOOK.md)); mainnet = same code, `TON_NETWORK=mainnet` + redeploy collection |
+| Production launch | **No** — §5 + billboards rendering; playtest hosting **yes**, testnet pass loop **yes** |
 
 ---
 

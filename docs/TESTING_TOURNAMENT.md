@@ -1,8 +1,11 @@
 # Tournament playtest guide (Web2 + mocked Web3)
 
+> Real TON wallets / pass NFTs on testnet: [`TON_TESTNET_RUNBOOK.md`](./TON_TESTNET_RUNBOOK.md).
+> Everything below still works with the mock wallet while `game_config.dev_mode = true`.
+
 ## Prerequisites
 
-1. Supabase project linked with migrations applied (through **0009**):
+1. Supabase project linked with migrations applied (through **0015**):
    ```bash
    supabase link --project-ref <ref>
    supabase db push

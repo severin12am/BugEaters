@@ -171,12 +171,23 @@ Commands: `npm run race-server` · `npm run race-server:test` · `npm run smoke:
 |------|------|
 | `tournamentConfig.ts` | Default N, species ratio, Monday time slots |
 | `weekClock.ts` | Current week id, weekday, dev override `?tournamentDay=` |
-| `tournamentApi.ts` | `fetchWeekState()` — mock/API week context for hub |
+| `tournamentApi.ts` | `fetchWeekState()`, ready / join / results RPCs, `burnPass()` (prepare → wallet sign → verify), `syncWalletPasses()`, `invokeFunction()` |
 | `mondaySchedule.ts` | Time slot helpers |
-| `roleAssign.ts` | Client-side weighted role (mock; server should own this) |
-| `types.ts` | Week/pass types |
-| `chain/ChainService.ts` | Interface for wallet + burn |
-| `chain/MockChainService.ts` | Registry-based mock wallet connect |
+| `roleAssign.ts` | Client-side weighted role (mock; server owns roles via `assign_roles`) |
+| `types.ts` | Week / pass (incl. NFT mint state) / chain config types |
+| `chain/ChainService.ts` | Interface: connect / disconnect / linked wallet / sign burn |
+| `chain/TonChainService.ts` | Real TON: TON Connect + `ton_proof` → `link-wallet`; burn via `sendTransaction` |
+| `chain/MockChainService.ts` | Playtest mock (server accepts it only in `dev_mode`) |
+| `chain/index.ts` | `getChainService()` — real when `VITE_TONCONNECT_MANIFEST_URL` is set |
+
+## TON wallet (`src/ton/`)
+
+| File | Role |
+|------|------|
+| `env.ts` | Manifest URL switch, network, explorer / short-address helpers |
+| `TonConnectService.ts` | Singleton `TonConnectUI`; `connectWithProof()`, `sendTransaction()`, `disconnect()` |
+
+Server minter: `server/src/ton/` (`nftCollection.ts` cell builders, `tonClient.ts`, `treasury.ts`, `NftMinter.ts`, `supabaseMintStore.ts`). Contracts: `contracts/`. Edge functions: `supabase/functions/{ton-proof-payload,link-wallet,pass-burn,sync-passes,nft-meta}`.
 
 ---
 
