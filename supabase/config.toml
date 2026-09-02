@@ -16,3 +16,20 @@ verify_jwt = true
 
 [functions.race-results]
 verify_jwt = false
+
+# TON wallet + pass NFT loop (see docs/TON_CRYPTO_IMPLEMENTATION_PLAN.md)
+[functions.ton-proof-payload]
+verify_jwt = true
+
+[functions.link-wallet]
+verify_jwt = true
+
+[functions.pass-burn]
+verify_jwt = true
+
+[functions.sync-passes]
+verify_jwt = true
+
+# Public TEP-64 metadata read by wallets / marketplaces — no JWT.
+[functions.nft-meta]
+verify_jwt = false

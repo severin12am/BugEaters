@@ -17,13 +17,16 @@ import { getWeekContext, grantsEntryLabel } from '../tournament/weekClock';
 import {
   fetchWeekState,
   resetDevSandboxWeek,
+  syncWalletPasses,
   weekContextFromState,
 } from '../tournament/tournamentApi';
-import { getChainService } from '../tournament/chain/MockChainService';
+import { getChainService } from '../tournament/chain';
 import {
   clearDevSessionConfirmation,
   isDevSessionUiEnabled,
 } from '../tournament/devSession';
+import { shortAddress, tonviewerUrl } from '../ton/env';
+import { openExternalLink } from '../ui/domPrompt';
 import { REGISTRY_KEYS } from './BootScene';
 
 /**
@@ -33,6 +36,8 @@ import { REGISTRY_KEYS } from './BootScene';
 export class WeekHubScene extends Phaser.Scene {
   private connecting = false;
   private resetting = false;
+  private syncing = false;
+  private walletNotice: Phaser.GameObjects.Text | null = null;
   private hubWeek: ReturnType<typeof getWeekContext> | null = null;
   private hubState: Awaited<ReturnType<typeof fetchWeekState>> | null = null;
 
@@ -135,7 +140,8 @@ export class WeekHubScene extends Phaser.Scene {
     const walletY = passY + ux(72);
     createMonoDivider(this, pad, walletY, panelW);
     createMonoText(this, pad, walletY + ux(18), 'Wallet', 'label');
-    this.renderWalletRow(pad, walletY + ux(40), week);
+    this.renderWalletRow(pad, walletY + ux(40), week, state);
+    this.walletNotice = createMonoText(this, pad, walletY + ux(66), '', 'caption').setWordWrapWidth(panelW);
 
     const ctaY = getMenuBottomY(this, isDevSessionUiEnabled() ? 188 : 148);
     const primary = createMonoButton(this, cx, ctaY, week.primaryCta, 'primary', panelW);
@@ -205,23 +211,68 @@ export class WeekHubScene extends Phaser.Scene {
       return;
     }
 
-    week.passes.forEach((pass, i) => {
+    week.passes.slice(0, 2).forEach((pass, i) => {
       const chipX = x + i * ux(148);
       const chip = createMonoPanel(this, chipX, y, { width: ux(136), height: ux(44), border: true });
-      createMonoText(this, chipX + ux(10), y + ux(14), grantsEntryLabel(pass.grantsEntry), 'mono');
-      createMonoText(this, chipX + ux(10), y + ux(30), `Won ${grantsEntryLabel(pass.wonOn)}`, 'caption');
+      createMonoText(this, chipX + ux(10), y + ux(10), grantsEntryLabel(pass.grantsEntry), 'mono');
+      createMonoText(this, chipX + ux(10), y + ux(28), this.passNftLabel(pass), 'caption');
       chip.setAlpha(0.95);
+      if (pass.nftAddress && pass.mintStatus === 'minted') {
+        const address = pass.nftAddress;
+        chip.setInteractive(
+          new Phaser.Geom.Rectangle(0, 0, ux(136), ux(44)),
+          Phaser.Geom.Rectangle.Contains,
+        );
+        chip.on('pointerup', () => openExternalLink(tonviewerUrl(address)));
+      }
     });
+    if (week.passes.length > 2) {
+      createMonoText(this, x + 2 * ux(148), y + ux(14), `+${week.passes.length - 2}`, 'caption');
+    }
   }
 
-  private renderWalletRow(x: number, y: number, week: ReturnType<typeof getWeekContext>): void {
+  /** One line under the pass name: where the pass lives (NFT state). */
+  private passNftLabel(pass: ReturnType<typeof getWeekContext>['passes'][number]): string {
+    switch (pass.mintStatus) {
+      case 'minted':
+        return `NFT #${pass.nftIndex ?? '?'} · tap to view`;
+      case 'minting':
+        return 'Minting NFT…';
+      case 'failed':
+        return 'Mint retrying…';
+      case 'skipped':
+        return 'Forfeited';
+      default:
+        return `Won ${grantsEntryLabel(pass.wonOn)}`;
+    }
+  }
+
+  private renderWalletRow(
+    x: number,
+    y: number,
+    week: ReturnType<typeof getWeekContext>,
+    state: Awaited<ReturnType<typeof fetchWeekState>> | null,
+  ): void {
+    const chain = getChainService();
     if (week.walletLinked && week.walletAddress) {
-      const display =
-        week.walletAddress.length > 12
-          ? `${week.walletAddress.slice(0, 4)}…${week.walletAddress.slice(-4)}`
-          : week.walletAddress;
-      createMonoText(this, x, y, display, 'mono');
-      createStatusPill(this, x + ux(200), y, 'Linked', true);
+      createMonoText(this, x, y, shortAddress(week.walletAddress), 'mono');
+      createStatusPill(this, x + ux(120), y, chain.kind === 'ton' ? 'TON linked' : 'Mock wallet', true);
+
+      const hasCollection = Boolean(state?.chain.collectionAddress) && chain.kind === 'ton';
+      if (hasCollection) {
+        const importBtn = createMonoButton(this, x + ux(228), y, 'Import', 'secondary', ux(92), ux(40));
+        bindButtonClick(importBtn, () => void this.importPasses());
+      }
+      const disconnect = createMonoButton(
+        this,
+        x + (hasCollection ? ux(320) : ux(268)),
+        y,
+        hasCollection ? '×' : 'Unlink',
+        'ghost',
+        hasCollection ? ux(44) : ux(96),
+        ux(40),
+      );
+      bindButtonClick(disconnect, () => void this.disconnectWallet());
       return;
     }
 
@@ -233,8 +284,62 @@ export class WeekHubScene extends Phaser.Scene {
       'caption',
     );
 
-    const connect = createMonoButton(this, x + ux(248), y, 'Connect', 'secondary', ux(120), ux(40));
+    const connect = createMonoButton(
+      this,
+      x + ux(248),
+      y,
+      chain.kind === 'ton' ? 'Connect' : 'Mock connect',
+      'secondary',
+      ux(120),
+      ux(40),
+    );
     bindButtonClick(connect, () => void this.connectWallet());
+  }
+
+  /** Pulls passes bought on the market (owned in the wallet) into this account. */
+  private async importPasses(): Promise<void> {
+    if (this.syncing) {
+      return;
+    }
+    this.syncing = true;
+    this.walletNotice?.setText('Checking your wallet for passes…');
+    try {
+      const result = await syncWalletPasses();
+      if (!this.scene.isActive()) {
+        return;
+      }
+      if (result.imported > 0) {
+        this.scene.restart();
+        return;
+      }
+      this.walletNotice?.setText(
+        result.checked === 0 ? 'No BugEaters passes in this wallet.' : 'All passes in this wallet are already yours.',
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'import failed';
+      this.walletNotice?.setText(`Import failed: ${message}`);
+    } finally {
+      this.syncing = false;
+    }
+  }
+
+  private async disconnectWallet(): Promise<void> {
+    if (this.connecting) {
+      return;
+    }
+    this.connecting = true;
+    try {
+      await getChainService().disconnectWallet();
+      this.registry.set(REGISTRY_KEYS.walletLinked, false);
+      if (this.scene.isActive()) {
+        this.scene.restart();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unlink failed';
+      this.walletNotice?.setText(`Could not unlink: ${message}`);
+    } finally {
+      this.connecting = false;
+    }
   }
 
   private async connectWallet(): Promise<void> {
@@ -251,11 +356,14 @@ export class WeekHubScene extends Phaser.Scene {
       height: ux(120),
       raised: true,
     });
+    const chain = getChainService();
     const msg = createMonoText(
       this,
       cx,
       this.scale.height / 2 - ux(20),
-      'Connecting to wallet…\nConfirm in your wallet app',
+      chain.kind === 'ton'
+        ? 'Choose a TON wallet and sign the\nlogin request to link it'
+        : 'Connecting to wallet…\nConfirm in your wallet app',
       'body',
     )
       .setOrigin(0.5)
@@ -264,16 +372,38 @@ export class WeekHubScene extends Phaser.Scene {
     overlay.add([dim, panel, msg]);
 
     try {
-      const chain = getChainService();
       await chain.connectWallet();
       this.registry.set(REGISTRY_KEYS.walletLinked, true);
       overlay.destroy();
       this.connecting = false;
-      this.scene.restart();
+      if (this.scene.isActive()) {
+        this.scene.restart();
+      }
     } catch (err) {
       overlay.destroy();
       this.connecting = false;
+      const message = err instanceof Error ? err.message : 'wallet connect failed';
       console.warn('[hub] wallet connect failed', err);
+      this.walletNotice?.setText(this.walletErrorCopy(message));
+    }
+  }
+
+  private walletErrorCopy(code: string): string {
+    switch (code) {
+      case 'wallet_connect_cancelled':
+        return 'Wallet connection cancelled.';
+      case 'wallet_connect_timeout':
+        return 'No wallet answered — try again.';
+      case 'wallet_did_not_sign_proof':
+        return 'Your wallet did not sign the login request. Use a wallet that supports TON Connect login (Tonkeeper, Wallet in Telegram).';
+      case 'wallet_in_use':
+        return 'That wallet is already linked to another player.';
+      case 'wrong_network':
+        return 'Wrong network — switch your wallet to TON testnet.';
+      case 'proof_required':
+        return 'Mock wallets are off on this server — connect a real TON wallet.';
+      default:
+        return `Wallet link failed: ${code}`;
     }
   }
 

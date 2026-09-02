@@ -1,7 +1,7 @@
 import { ensureSession } from '../../net/auth';
 import { getSupabase } from '../../net/supabaseClient';
 import { linkWallet } from '../tournamentApi';
-import type { ChainService } from './ChainService';
+import type { BurnTransactionRequest, ChainService } from './ChainService';
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -28,8 +28,13 @@ function randomHex(bytes: number): string {
   return out;
 }
 
-/** Stand-in chain layer for playtests — swap for real TON Connect later. */
+/**
+ * Stand-in chain layer for playtests without a wallet. Only works while
+ * `game_config.dev_mode = true` (the server refuses unverified links otherwise).
+ */
 export class MockChainService implements ChainService {
+  readonly kind = 'mock' as const;
+
   async connectWallet(): Promise<{ address: string }> {
     const auth = await ensureSession();
     if (!auth.userId) {
@@ -48,7 +53,7 @@ export class MockChainService implements ChainService {
     if (!supabase) {
       return;
     }
-    await supabase.from('profiles').update({ wallet_address: null, wallet_linked_at: null }).eq('id', (await ensureSession()).userId ?? '');
+    await supabase.rpc('unlink_wallet');
   }
 
   async getLinkedWallet(): Promise<string | null> {
@@ -64,18 +69,8 @@ export class MockChainService implements ChainService {
     return (data?.wallet_address as string | null) ?? null;
   }
 
-  async requestBurnSignature(passId: string): Promise<{ txHash: string }> {
-    void passId;
+  async sendBurnTransaction(_request: BurnTransactionRequest): Promise<{ boc: string }> {
     await delay(1000 + Math.floor(Math.random() * 1000));
-    return { txHash: `0x${randomHex(32)}` };
+    return { boc: `mock:${randomHex(32)}` };
   }
-}
-
-let instance: ChainService | null = null;
-
-export function getChainService(): ChainService {
-  if (!instance) {
-    instance = new MockChainService();
-  }
-  return instance;
 }

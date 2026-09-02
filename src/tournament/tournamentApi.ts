@@ -1,6 +1,7 @@
 import { ensureSession } from '../net/auth';
 import { getSupabase } from '../net/supabaseClient';
-import type { PassChip, TournamentWeekday, WeekContext } from './types';
+import type { ChainService } from './chain/ChainService';
+import type { ChainConfig, PassChip, PassMintStatus, TournamentWeekday, WeekContext } from './types';
 import { getDevOverrideParam, getWeekContext as buildLocalWeekContext, KEY_MAP, LABEL_MAP } from './weekClock';
 
 export type BlockReason =
@@ -35,7 +36,21 @@ export interface WeekState {
   readyCount: number;
   isChampion: boolean;
   championBillboardActive: boolean;
+  /** Champion token (only filled for the champion). */
+  championNftAddress: string | null;
+  championMintStatus: PassMintStatus | null;
+  billboardCreativeUrl: string | null;
+  billboardTransferredTo: string | null;
+  chain: ChainConfig;
 }
+
+export const DEFAULT_CHAIN_CONFIG: ChainConfig = {
+  network: 'testnet',
+  collectionAddress: null,
+  burnAddress: null,
+  passRequiredOnchain: false,
+  devMode: false,
+};
 
 export interface RaceOutcome {
   outcome: 'advanced' | 'eliminated' | 'champion' | 'sunday_pass' | 'pending';
@@ -60,13 +75,68 @@ function mapPass(row: {
   grants_entry: string;
   won_on: string;
   week_id: string;
+  nft_address?: string | null;
+  nft_index?: number | string | null;
+  mint_status?: string | null;
 }): PassChip {
   return {
     id: row.id,
     grantsEntry: row.grants_entry as TournamentWeekday,
     wonOn: row.won_on as TournamentWeekday,
     weekId: row.week_id,
+    nftAddress: row.nft_address ?? null,
+    nftIndex: row.nft_index === null || row.nft_index === undefined ? null : Number(row.nft_index),
+    mintStatus: (row.mint_status as PassMintStatus | undefined) ?? 'pending',
   };
+}
+
+function mapChain(raw: Record<string, unknown> | null | undefined): ChainConfig {
+  if (!raw) {
+    return DEFAULT_CHAIN_CONFIG;
+  }
+  return {
+    network: raw.network === 'mainnet' ? 'mainnet' : 'testnet',
+    collectionAddress: typeof raw.collection_address === 'string' ? raw.collection_address : null,
+    burnAddress: typeof raw.burn_address === 'string' ? raw.burn_address : null,
+    passRequiredOnchain: Boolean(raw.pass_required_onchain),
+    devMode: Boolean(raw.dev_mode),
+  };
+}
+
+/**
+ * Calls a Supabase Edge Function and surfaces its `{ error }` body as an Error
+ * whose message is the machine code (e.g. 'no_wallet', 'burn_not_visible').
+ */
+export async function invokeFunction<T>(name: string, body: Record<string, unknown>): Promise<T> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    throw new Error('supabase not configured');
+  }
+  const auth = await ensureSession();
+  if (!auth.session) {
+    throw new Error('not_authenticated');
+  }
+  const { data, error } = await supabase.functions.invoke(name, { body });
+  if (error) {
+    const context = (error as { context?: unknown }).context;
+    if (context instanceof Response) {
+      let payload: { error?: string } | null = null;
+      try {
+        payload = (await context.clone().json()) as { error?: string };
+      } catch {
+        payload = null;
+      }
+      if (context.status === 404 && !payload?.error) {
+        throw new Error(`function_missing:${name}`);
+      }
+      throw new Error(payload?.error ?? `${name} failed (${context.status})`);
+    }
+    throw new Error(error.message ?? `${name} failed`);
+  }
+  if (data && typeof data === 'object' && 'error' in data && (data as { error?: string }).error) {
+    throw new Error(String((data as { error: string }).error));
+  }
+  return data as T;
 }
 
 function parseRpcError(message: string): BlockReason | null {
@@ -151,12 +221,20 @@ export async function fetchWeekState(): Promise<WeekState | null> {
         grants_entry: p.grants_entry,
         won_on: p.won_on,
         week_id: p.week_id,
+        nft_address: p.nft_address ?? null,
+        nft_index: p.nft_index ?? null,
+        mint_status: p.mint_status ?? null,
       }),
     ),
     registration: (data.registration as WeekState['registration']) ?? null,
     readyCount: Number(data.ready_count ?? 0),
     isChampion: Boolean(data.is_champion),
     championBillboardActive: Boolean(data.champion_billboard_active),
+    championNftAddress: (data.champion_nft_address as string | null) ?? null,
+    championMintStatus: (data.champion_mint_status as PassMintStatus | null) ?? null,
+    billboardCreativeUrl: (data.billboard_creative_url as string | null) ?? null,
+    billboardTransferredTo: (data.billboard_transferred_to as string | null) ?? null,
+    chain: mapChain(data.chain as Record<string, unknown> | null),
   };
 }
 
@@ -244,7 +322,84 @@ export async function tapReady(): Promise<{ readyCount: number; passId: string }
   };
 }
 
-export async function confirmPassBurn(roomId: string, txHash: string): Promise<void> {
+export interface BurnOutcome {
+  passId: string;
+  /** 'onchain' = the NFT was transferred to the burn address; 'db' = row-only burn. */
+  mode: 'onchain' | 'db';
+  txHash: string | null;
+}
+
+interface BurnPrepareResponse {
+  mode: 'onchain' | 'db';
+  passId: string;
+  nftAddress?: string;
+  to?: string;
+  amount?: string;
+  payload?: string;
+  validUntil?: number;
+}
+
+/**
+ * Burn-to-enter (I5). Asks the server how this pass must be burned, signs the
+ * TON transfer with the connected wallet when the pass exists on-chain, then
+ * has the server verify the item reached the burn address and seal the burn.
+ *
+ * `onStatus` receives short player-facing progress lines.
+ */
+export async function burnPass(
+  chain: ChainService,
+  passId: string,
+  roomId: string,
+  onStatus?: (message: string) => void,
+): Promise<BurnOutcome> {
+  let prepared: BurnPrepareResponse;
+  try {
+    prepared = await invokeFunction<BurnPrepareResponse>('pass-burn', { action: 'prepare', passId });
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('function_missing:')) {
+      // Edge function not deployed yet — DB-only burn keeps the loop playable.
+      await confirmPassBurnRpc(roomId, null);
+      return { passId, mode: 'db', txHash: null };
+    }
+    throw error;
+  }
+
+  let boc: string | undefined;
+  if (prepared.mode === 'onchain') {
+    onStatus?.('Confirm the burn in your wallet…');
+    const signed = await chain.sendBurnTransaction({
+      to: prepared.to!,
+      amount: prepared.amount!,
+      payload: prepared.payload!,
+      validUntil: prepared.validUntil,
+    });
+    boc = signed.boc;
+    onStatus?.('Waiting for TON to confirm the burn…');
+  }
+
+  // The item may take a few blocks to show at the burn address; the function
+  // polls for ~45s per call, so retry a couple of times before giving up.
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const result = await invokeFunction<{ ok: boolean; mode: 'onchain' | 'db'; txHash?: string | null }>(
+        'pass-burn',
+        { action: 'confirm', passId, roomId, boc, override: devOverride() },
+      );
+      return { passId, mode: result.mode, txHash: result.txHash ?? null };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (lastError.message !== 'burn_not_visible') {
+        throw lastError;
+      }
+      onStatus?.('Still waiting for the chain…');
+    }
+  }
+  throw lastError ?? new Error('burn_not_visible');
+}
+
+/** DB-only burn through the RPC (mock chain / no edge function). */
+async function confirmPassBurnRpc(roomId: string, txHash: string | null): Promise<void> {
   const supabase = getSupabase();
   if (!supabase) {
     throw new Error('supabase not configured');
@@ -255,8 +410,15 @@ export async function confirmPassBurn(roomId: string, txHash: string): Promise<v
     p_override: devOverride(),
   });
   if (error) {
-    throw new Error(error.message);
+    const reason = parseRpcError(error.message);
+    throw new Error(reason ?? error.message);
   }
+}
+
+/** Imports passes bought on the market into this account (verified on-chain server-side). */
+export async function syncWalletPasses(): Promise<{ checked: number; imported: number }> {
+  const result = await invokeFunction<{ checked: number; imported: number }>('sync-passes', {});
+  return { checked: Number(result.checked ?? 0), imported: Number(result.imported ?? 0) };
 }
 
 export async function assignRoles(roomId: string): Promise<void> {
