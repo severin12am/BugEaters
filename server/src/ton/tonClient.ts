@@ -17,8 +17,30 @@ export function createTonClient(config: TonConfig): TonClient {
   return new TonClient({ endpoint: config.endpoint, apiKey: config.apiKey ?? undefined });
 }
 
+/**
+ * Public toncenter allows ~1 request/second without a key. Every read goes
+ * through this so a burst (index → address → data) backs off instead of failing.
+ */
+export async function withRetry<T>(fn: () => Promise<T>, retries = 5): Promise<T> {
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await fn();
+    } catch (error) {
+      const status = (error as { response?: { status?: number }; status?: number }).response?.status ??
+        (error as { status?: number }).status;
+      const retryable = status === 429 || status === 502 || status === 503 || status === 504;
+      if (!retryable || attempt >= retries) {
+        throw error;
+      }
+      attempt += 1;
+      await new Promise((resolve) => setTimeout(resolve, 1_200 * attempt));
+    }
+  }
+}
+
 export async function getCollectionData(client: TonClient, collection: Address): Promise<CollectionData> {
-  const { stack } = await client.runMethod(collection, 'get_collection_data');
+  const { stack } = await withRetry(() => client.runMethod(collection, 'get_collection_data'));
   return parseCollectionData(stack);
 }
 
@@ -27,18 +49,18 @@ export async function getNftAddressByIndex(
   collection: Address,
   index: number | bigint,
 ): Promise<Address> {
-  const { stack } = await client.runMethod(collection, 'get_nft_address_by_index', [
-    { type: 'int', value: BigInt(index) },
-  ]);
+  const { stack } = await withRetry(() =>
+    client.runMethod(collection, 'get_nft_address_by_index', [{ type: 'int', value: BigInt(index) }]),
+  );
   return stack.readAddress();
 }
 
 /** Returns null when the item contract does not exist yet (not deployed). */
 export async function getNftData(client: TonClient, item: Address): Promise<NftData | null> {
-  if (!(await client.isContractDeployed(item))) {
+  if (!(await withRetry(() => client.isContractDeployed(item)))) {
     return null;
   }
-  const { stack } = await client.runMethod(item, 'get_nft_data');
+  const { stack } = await withRetry(() => client.runMethod(item, 'get_nft_data'));
   return parseNftData(stack);
 }
 
@@ -49,10 +71,12 @@ export async function getNftContentUrl(
   index: bigint,
   individualContent: Cell,
 ): Promise<string> {
-  const { stack } = await client.runMethod(collection, 'get_nft_content', [
-    { type: 'int', value: index },
-    { type: 'cell', cell: individualContent },
-  ]);
+  const { stack } = await withRetry(() =>
+    client.runMethod(collection, 'get_nft_content', [
+      { type: 'int', value: index },
+      { type: 'cell', cell: individualContent },
+    ]),
+  );
   const content = stack.readCell().beginParse();
   content.loadUint(8); // TEP-64 off-chain prefix
   return content.loadStringTail();

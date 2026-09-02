@@ -83,13 +83,32 @@ export interface NftData {
   individualContent: Cell | null;
 }
 
+/** Public toncenter allows ~1 req/s without a key — back off on 429/5xx instead of failing. */
+export async function withRetry<T>(fn: () => Promise<T>, retries = 5): Promise<T> {
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await fn();
+    } catch (error) {
+      const status =
+        (error as { response?: { status?: number } }).response?.status ?? (error as { status?: number }).status;
+      const retryable = status === 429 || status === 502 || status === 503 || status === 504;
+      if (!retryable || attempt >= retries) {
+        throw error;
+      }
+      attempt += 1;
+      await new Promise((resolve) => setTimeout(resolve, 1_200 * attempt));
+    }
+  }
+}
+
 /** `get_nft_data` on an item; null when the item contract is not deployed. */
 export async function getNftData(item: Address): Promise<NftData | null> {
   const client = tonClient();
-  if (!(await client.isContractDeployed(item))) {
+  if (!(await withRetry(() => client.isContractDeployed(item)))) {
     return null;
   }
-  const { stack } = await client.runMethod(item, 'get_nft_data');
+  const { stack } = await withRetry(() => client.runMethod(item, 'get_nft_data'));
   const initialized = stack.readBigNumber() !== 0n;
   const index = stack.readBigNumber();
   const collection = stack.readAddressOpt();
@@ -104,9 +123,9 @@ export async function isInCollection(item: Address, data: NftData): Promise<bool
   if (!collection || !data.collection || !data.collection.equals(collection)) {
     return false;
   }
-  const { stack } = await tonClient().runMethod(collection, 'get_nft_address_by_index', [
-    { type: 'int', value: data.index },
-  ]);
+  const { stack } = await withRetry(() =>
+    tonClient().runMethod(collection, 'get_nft_address_by_index', [{ type: 'int', value: data.index }]),
+  );
   return stack.readAddress().equals(item);
 }
 
@@ -230,8 +249,8 @@ function constantTimeEqual(a: string, b: string): boolean {
 export async function resolveWalletPublicKey(address: Address, stateInitBase64?: string): Promise<Uint8Array | null> {
   try {
     const client = tonClient();
-    if (await client.isContractDeployed(address)) {
-      const { stack } = await client.runMethod(address, 'get_public_key');
+    if (await withRetry(() => client.isContractDeployed(address))) {
+      const { stack } = await withRetry(() => client.runMethod(address, 'get_public_key'));
       const key = stack.readBigNumber();
       return bigintTo32Bytes(key);
     }
