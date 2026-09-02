@@ -69,6 +69,8 @@ class TonConnectServiceImpl {
    */
   async connectWithProof(payload: string): Promise<ProvenWallet> {
     const ui = this.get();
+    // A restored session has no fresh proof; drop it so the wallet signs again.
+    await ui.connectionRestored;
     if (ui.connected) {
       await ui.disconnect();
     }

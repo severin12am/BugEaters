@@ -122,13 +122,15 @@ function registerPostRaceHooks(context: ServerContext): void {
       console.info(`[hooks] room ${result.roomId} winner: ${winner.userId}`);
     }
   });
-  context.postRaceHooks.register('nft-mint', async () => {
+  context.postRaceHooks.register('nft-mint', () => {
     if (!context.ton) {
       return;
     }
-    const report = await context.ton.minter.sweep();
-    if (report.passesMinted || report.championsMinted || report.failures) {
-      console.info('[hooks] nft-mint sweep', report);
-    }
+    // Kick the sweep but do not hold the finished room open while TON confirms.
+    void context.ton.minter.sweep().then((report) => {
+      if (report.passesMinted || report.championsMinted || report.failures) {
+        console.info('[hooks] nft-mint sweep', report);
+      }
+    });
   });
 }
