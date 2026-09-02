@@ -70,6 +70,10 @@ Playtest menu (DevSessionScene)
 | Join fails one of two phones | Fly machine count >1; `fly scale count 1`; in-memory tickets |
 | End copy / blood message | `EndScene.ts` |
 | Balance numbers | `src/config/tuning.ts` (solo) · `server/src/config/raceConfig.ts` (auth world speed/lanes) |
+| Wallet won't link / `proof_required` | `link-wallet` edge fn (ton_proof), `game_config.dev_mode` (mock only), `TON_PROOF_DOMAINS` |
+| Pass stuck on "Minting NFT…" | Race server log `[ton]` — minter needs `TON_TREASURY_MNEMONIC`, `NFT_COLLECTION_ADDRESS`, `SUPABASE_SERVICE_ROLE_KEY`; `passes.mint_error` |
+| Burn refused `onchain_burn_required` / `burn_not_visible` | `pass-burn` edge fn; `pass_required_onchain`; item owner on tonviewer must be `EQAAAA…AM9c` |
+| Bought pass not showing | Hub **Import** → `sync-passes` (TonAPI list + `get_nft_data` + `claim_pass_by_nft`) |
 
 ---
 
@@ -121,12 +125,16 @@ Playtest menu (DevSessionScene)
 | `src/net/authoritative/clientRaceConfig.ts` | Must match server `world` geometry |
 | `src/net/authoritative/env.ts` | `VITE_RACE_SERVER_URL`, dev flags |
 
-### Legacy / tournament (still in tree)
+### Tournament + TON wallet
 
 | Path | Role |
 |------|------|
 | `src/net/RoomSession.ts` | Supabase Realtime (legacy peer path) |
-| `src/tournament/*` | Week hub, mocks, pass UI |
+| `src/tournament/tournamentApi.ts` | Week state, ready/join/results RPCs, `burnPass` (prepare → wallet sign → verify), `syncWalletPasses` |
+| `src/tournament/chain/*` | `ChainService` contract; `TonChainService` (real) vs `MockChainService` (dev_mode); factory in `index.ts` |
+| `src/ton/TonConnectService.ts` | Single `TonConnectUI`; connect with `ton_proof`; `sendTransaction` for burns |
+| `src/ton/env.ts` | `VITE_TONCONNECT_MANIFEST_URL` switch, network, explorer URLs |
+| `src/ui/domPrompt.ts` | In-app text prompt / external link (Telegram WebView blocks `window.prompt`) |
 | `src/ui/*` | Mono chrome |
 
 Detail file list: [`CODEBASE.md`](./CODEBASE.md) (update when you add files; this guide wins for auth routing).
@@ -157,8 +165,11 @@ server/src/
 │   ├── RaceRoom.ts          Transport adapter
 │   ├── protocol.ts          CHANNEL + DTOs
 │   └── snapshot.ts
-└── results/                 Console / Supabase sinks
+├── results/                 Console / Supabase sinks
+└── ton/                     Pass / champion NFT minter (TEP-62 cell builders, treasury wallet, sweep)
 ```
+
+**TON loop (Supabase side):** `supabase/migrations/0015_ton_nft.sql` (mint queue, `link_wallet_verified`, `confirm_pass_burn_verified`, `claim_pass_by_nft`, `expire_unlinked_passes`) · edge functions `ton-proof-payload`, `link-wallet`, `pass-burn`, `sync-passes`, `nft-meta` (+ `_shared/ton.ts`). Contracts: `contracts/`. Runbook: [`TON_TESTNET_RUNBOOK.md`](./TON_TESTNET_RUNBOOK.md).
 
 **Tests:** `server/test/simulation.test.ts` · `npm run race-server:test`  
 **Smoke:** `npm run smoke:auth-race` · optional `RACE_SMOKE_URL=https://bugeaters-race.fly.dev`
@@ -244,6 +255,9 @@ flyctl scale count 1 -a bugeaters-race
 | `RACE_DEV_MODE` | Fly secret | Enables `/dev/ticket` on server |
 | `RACE_TOKEN_SECRET` | Fly | JWT mint/verify |
 | `WEB_ORIGIN` | Fly | CORS |
+| `VITE_TONCONNECT_MANIFEST_URL` · `VITE_TON_NETWORK` · `VITE_TELEGRAM_BOT_USERNAME` | Pages | Real TON Connect wallet (else mock) |
+| `TON_TREASURY_MNEMONIC` · `NFT_COLLECTION_ADDRESS` · `NFT_META_BASE_URL` · `SUPABASE_SERVICE_ROLE_KEY` | Fly | NFT minter (the only chain writer) |
+| `NFT_COLLECTION_ADDRESS` · `TON_NETWORK` · `TON_PROOF_DOMAINS` · `TON_API_KEY` · `TONAPI_KEY` | Supabase secrets | Edge functions (chain reads, ton_proof) |
 
 Do **not** commit `.env.production.local`. Example: `.env.example`.
 
