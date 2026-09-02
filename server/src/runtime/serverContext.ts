@@ -19,6 +19,7 @@ import {
   type ResultsSink,
 } from '../results/index.js';
 import { PostRaceHooks } from '../hooks/index.js';
+import { createTonRuntime, type TonRuntime } from '../ton/index.js';
 import { loadServerEnv } from './loadEnv.js';
 
 export interface ServerContext {
@@ -29,6 +30,8 @@ export interface ServerContext {
   readonly resultsSink: ResultsSink;
   /** Extension hooks that run after a race is sealed. */
   readonly postRaceHooks: PostRaceHooks;
+  /** TON pass/champion NFT minter — null until the operator sets the TON secrets. */
+  ton: TonRuntime | null;
 }
 
 let cached: ServerContext | null = null;
@@ -48,7 +51,14 @@ function buildServerContext(): ServerContext {
   const config = loadRaceConfig();
   const ticketSecret = process.env.RACE_TOKEN_SECRET ?? '';
   const resultsSink = chooseResultsSink();
-  const postRaceHooks = registerPostRaceHooks(new PostRaceHooks());
+  const context: ServerContext = {
+    config,
+    ticketSecret,
+    resultsSink,
+    postRaceHooks: new PostRaceHooks(),
+    ton: null,
+  };
+  registerPostRaceHooks(context);
 
   if (!ticketSecret) {
     console.warn(
@@ -57,7 +67,26 @@ function buildServerContext(): ServerContext {
     );
   }
 
-  return { config, ticketSecret, resultsSink, postRaceHooks };
+  return context;
+}
+
+/**
+ * Connects the TON minter (async: derives the treasury wallet). Called once from
+ * the entrypoint after the HTTP server is up so a slow RPC never blocks boot.
+ */
+export async function startTonRuntime(context: ServerContext = getServerContext()): Promise<void> {
+  if (context.ton) {
+    return;
+  }
+  try {
+    const runtime = await createTonRuntime();
+    if (runtime) {
+      context.ton = runtime;
+      runtime.minter.start(runtime.config.mintIntervalMs);
+    }
+  } catch (error) {
+    console.error('[ton] minter failed to start — passes stay database rows', error);
+  }
 }
 
 /**
@@ -76,23 +105,30 @@ function chooseResultsSink(): ResultsSink {
 }
 
 /**
- * Registers post-race extension hooks. This is where future NFT minting / prize
- * distribution will be plugged in — WITHOUT touching the simulation.
+ * Registers post-race extension hooks — WITHOUT touching the simulation.
  *
- * TODO(extension): register real hooks here, e.g.:
+ *   - `log-winner`  reference hook.
+ *   - `nft-mint`    the pass / champion NFT mint. Advancement has already been
+ *                   written by Supabase (`record_authoritative_results`) when
+ *                   hooks run, so the minter just sweeps the pending queue.
  *
- *   hooks.register('nft-mint', async (result) => { ... });
- *   hooks.register('prize-payout', async (result) => { ... });
- *
- * Each hook is an isolated async function; see hooks/postRaceHooks.ts.
+ * TODO(extension): `prize-payout` etc. follow the same pattern; see
+ * hooks/postRaceHooks.ts for the contract.
  */
-function registerPostRaceHooks(hooks: PostRaceHooks): PostRaceHooks {
-  // Reference hook: log the sealed winner. Safe to remove.
-  hooks.register('log-winner', (result) => {
+function registerPostRaceHooks(context: ServerContext): void {
+  context.postRaceHooks.register('log-winner', (result) => {
     const winner = result.results.find((r) => r.placement === 1);
     if (winner) {
       console.info(`[hooks] room ${result.roomId} winner: ${winner.userId}`);
     }
   });
-  return hooks;
+  context.postRaceHooks.register('nft-mint', async () => {
+    if (!context.ton) {
+      return;
+    }
+    const report = await context.ton.minter.sweep();
+    if (report.passesMinted || report.championsMinted || report.failures) {
+      console.info('[hooks] nft-mint sweep', report);
+    }
+  });
 }

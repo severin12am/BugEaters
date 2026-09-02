@@ -14,7 +14,7 @@ import cors from 'cors';
 import express from 'express';
 import { defineRoom, defineServer, listen } from 'colyseus';
 import { RaceRoom } from './net/RaceRoom.js';
-import { getServerContext } from './runtime/serverContext.js';
+import { getServerContext, startTonRuntime } from './runtime/serverContext.js';
 import { isDevModeEnabled, mountDevTicketRoute } from './dev/devTicketRoute.js';
 
 const ctx = getServerContext();
@@ -33,6 +33,7 @@ const gameServer = defineServer({
         service: 'bugeaters-race-server',
         rooms: { min: ctx.config.minPlayers, max: ctx.config.maxPlayers },
         devMode: isDevModeEnabled(),
+        nftMinter: ctx.ton ? { network: ctx.ton.config.network, collection: ctx.ton.config.collectionAddress } : null,
       });
     });
 
@@ -50,3 +51,6 @@ console.info(
     `${ctx.postRaceHooks.size} post-race hook(s) registered` +
     (isDevModeEnabled() ? ', DEV MODE ON' : ''),
 );
+
+// TON pass / champion NFT minter (no-op until TON secrets are set).
+void startTonRuntime(ctx);
