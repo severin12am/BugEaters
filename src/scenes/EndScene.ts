@@ -21,6 +21,7 @@ import {
   weekContextFromState,
   fetchWeekState,
 } from '../tournament/tournamentApi';
+import { getChainService } from '../tournament/chain';
 import { REGISTRY_KEYS, type AuthLocalRaceOptions } from './BootScene';
 import {
   isRaceDevMode,
@@ -35,6 +36,7 @@ import {
 export class EndScene extends Phaser.Scene {
   private outcome: RaceOutcome | null = null;
   private practiceAgainBusy = false;
+  private walletBusy = false;
 
   constructor() {
     super({ key: 'EndScene' });
@@ -100,12 +102,12 @@ export class EndScene extends Phaser.Scene {
       title = 'FINISH';
       titleColor = MONO_CSS.text;
       subtitle = `Race time ${this.formatRaceTime(timeMs)}`;
-      advancement = this.advancementCopy(this.outcome, week.maxSundaySlots);
+      advancement = this.advancementCopy(this.outcome, week.maxSundaySlots, week.walletLinked);
     } else {
       title = 'TIME UP';
       titleColor = MONO_CSS.textMuted;
       subtitle = 'Timer ended — progress saved.';
-      advancement = this.advancementCopy(this.outcome, week.maxSundaySlots);
+      advancement = this.advancementCopy(this.outcome, week.maxSundaySlots, week.walletLinked);
     }
 
     gameText(this, cx, getContentTopY(this, 100), title, {
@@ -168,7 +170,15 @@ export class EndScene extends Phaser.Scene {
         this.scene.start('LobbyScene');
       });
     } else if (week.isMondayWeb2) {
-      createMonoText(this, cx, againY, 'One Monday race per week', 'caption').setOrigin(0.5);
+      const wonPass =
+        this.outcome?.outcome === 'advanced' || this.outcome?.outcome === 'sunday_pass' || this.outcome?.outcome === 'champion';
+      if (wonPass && !week.walletLinked) {
+        // I17: the Tuesday pass NFT only mints to a linked wallet — forfeit after the deadline.
+        const link = createMonoButton(this, cx, againY, 'Link TON wallet for your pass', 'primary', panelW);
+        bindButtonClick(link, () => void this.linkWalletFromEnd(cleanup));
+      } else {
+        createMonoText(this, cx, againY, 'One Monday race per week', 'caption').setOrigin(0.5);
+      }
     }
 
     const hubY = getMenuBottomY(this, 72);
@@ -278,17 +288,37 @@ export class EndScene extends Phaser.Scene {
     return outcome;
   }
 
-  private advancementCopy(outcome: RaceOutcome | null, maxSun: number): string {
+  /** Links a wallet right from the results screen so the awarded pass can mint. */
+  private async linkWalletFromEnd(cleanup: () => void): Promise<void> {
+    if (this.walletBusy) {
+      return;
+    }
+    this.walletBusy = true;
+    try {
+      await getChainService().connectWallet();
+      this.registry.set(REGISTRY_KEYS.walletLinked, true);
+      cleanup();
+      this.scene.start('WeekHubScene');
+    } catch (error) {
+      console.warn('[end] wallet link failed', error);
+      this.walletBusy = false;
+    }
+  }
+
+  private advancementCopy(outcome: RaceOutcome | null, maxSun: number, walletLinked = true): string {
     if (!outcome) {
       return 'Results pending — check week hub.';
     }
+    const mintNote = walletLinked
+      ? ' The pass NFT mints to your wallet within a minute.'
+      : ' Link a TON wallet within 24h or the pass is forfeited.';
     switch (outcome.outcome) {
       case 'champion':
-        return 'WORLD CHAMPION — Monday billboard rights unlocked.';
+        return 'WORLD CHAMPION — Monday billboard rights unlocked. Champion NFT mints to your wallet.';
       case 'sunday_pass':
-        return `You earned a Sunday pass · slot ${outcome.sundaySlot ?? '?'}/${maxSun}.`;
+        return `You earned a Sunday pass · slot ${outcome.sundaySlot ?? '?'}/${maxSun}.${mintNote}`;
       case 'advanced':
-        return `You won a ${formatGrantsEntryLabel(outcome.grantsEntry)} pass.`;
+        return `You won a ${formatGrantsEntryLabel(outcome.grantsEntry)} pass.${mintNote}`;
       case 'eliminated':
         return 'Did not advance — see you next Monday.';
       case 'pending':

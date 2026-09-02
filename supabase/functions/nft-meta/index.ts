@@ -67,7 +67,7 @@ Deno.serve(async (request) => {
     return json({
       name: `BugEaters ${day} Pass — week ${pass.week_id}`,
       description: `Entry to the ${day} BugEaters race of tournament week ${pass.week_id}. Earned on ${DAY_LABEL[pass.won_on] ?? pass.won_on}. Burn in the lobby to race; one pass = one race.${pass.status === 'burned' ? ' (Already burned.)' : ''}`,
-      image: `${IMAGE_BASE}/pass-${pass.grants_entry}.png`,
+      image: `${IMAGE_BASE}/pass.png`,
       external_url: APP_URL,
       attributes: [
         { trait_type: 'game', value: 'bugeaters' },
