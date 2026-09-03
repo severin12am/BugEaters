@@ -8,9 +8,16 @@ import { sampleLampLight, type LampPoint } from '../utils/lampLight';
 /**
  * Unity-style race audio: random ambient phrases, footstep one-shots, lamp hum loop.
  */
+/** Simultaneous footstep voices per character (steps are ~70ms clips). */
+const STEP_VOICES_PER_CHARACTER = 3;
+
+type SoundVoice = Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound;
+
 export class AudioManager {
   private phraseTimerMs = 0;
-  private lampSound: Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound | null = null;
+  private lampSound: SoundVoice | null = null;
+  private readonly stepVoices = new Map<string, SoundVoice[]>();
+  private stepVoiceCursor = 0;
   private active = false;
   private muted = false;
 
@@ -44,9 +51,19 @@ export class AudioManager {
     this.scene.sound.stopAll();
     this.lampSound?.destroy();
     this.lampSound = null;
+    for (const voices of this.stepVoices.values()) {
+      voices.forEach((voice) => voice.destroy());
+    }
+    this.stepVoices.clear();
   }
 
-  /** Footstep one-shot synced to the walk animation (Unity Mover.Sound at volume 0.1). */
+  /**
+   * Footstep one-shot synced to the walk animation (Unity Mover.Sound at volume 0.1).
+   *
+   * The Bug walk cycle fires ~19 steps/s. `sound.play(key)` would allocate a new
+   * sound object (and audio graph) for every one, so steps rotate through a
+   * small fixed set of voices per character instead.
+   */
   playFootstep(character: CharacterType): void {
     if (!this.canPlaySfx()) {
       return;
@@ -57,7 +74,21 @@ export class AudioManager {
       return;
     }
 
-    this.scene.sound.play(key, {
+    let voices = this.stepVoices.get(key);
+    if (!voices) {
+      voices = [];
+      this.stepVoices.set(key, voices);
+    }
+    let voice = voices.find((v) => !v.isPlaying);
+    if (!voice) {
+      if (voices.length >= STEP_VOICES_PER_CHARACTER) {
+        voice = voices[this.stepVoiceCursor++ % voices.length];
+      } else {
+        voice = this.scene.sound.add(key) as SoundVoice;
+        voices.push(voice);
+      }
+    }
+    voice.play({
       volume: TUNING.audio.steps.volume,
       detune: Phaser.Math.Between(-120, 120),
     });
@@ -115,7 +146,7 @@ export class AudioManager {
     this.scene.sound.play(key, { volume: TUNING.audio.phrases.volume });
   }
 
-  private ensureLampLoop(): Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound | null {
+  private ensureLampLoop(): SoundVoice | null {
     if (this.lampSound) {
       return this.lampSound;
     }
@@ -126,7 +157,7 @@ export class AudioManager {
     this.lampSound = this.scene.sound.add(AUDIO_KEYS.lampBuzz, {
       loop: true,
       volume: 0,
-    }) as Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound;
+    }) as SoundVoice;
     return this.lampSound;
   }
 

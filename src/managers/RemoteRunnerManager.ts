@@ -239,12 +239,17 @@ export class RemoteRunnerManager {
   /** Visible rivals for lighting/shadows. */
   getVisibleRunners(): { x: number; y: number; runner: RemotePlayer }[] {
     const list: { x: number; y: number; runner: RemotePlayer }[] = [];
+    this.collectVisibleRunners((runner) => list.push({ x: runner.x, y: runner.y, runner }));
+    return list;
+  }
+
+  /** Allocation-free variant of {@link getVisibleRunners} for the per-frame lighting pass. */
+  collectVisibleRunners(visit: (runner: RemotePlayer) => void): void {
     for (const player of this.players.values()) {
       if (player.visible && !player.getIsDead()) {
-        list.push({ x: player.x, y: player.y, runner: player });
+        visit(player);
       }
     }
-    return list;
   }
 
   destroy(): void {

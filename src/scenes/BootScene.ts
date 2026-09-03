@@ -9,7 +9,7 @@ import { preloadAbilityAssets } from '../config/abilities';
 import { preloadBriefcaseAssets } from '../utils/briefcaseSprites';
 import { preloadPropAssets } from '../utils/propSprites';
 import { preloadAudioAssets } from '../utils/audioAssets';
-import { preloadGuideShots } from '../ui/encyclopediaShots';
+import { shrinkOversizedPropTextures } from '../utils/textureBudget';
 import { isAbilityLabFromUrl } from '../dev/abilityLab';
 import { CharacterType } from '../utils/constants';
 import { isDevSessionUiEnabled } from '../tournament/devSession';
@@ -29,12 +29,13 @@ export class BootScene extends Phaser.Scene {
     preloadBriefcaseAssets(this);
     preloadPropAssets(this);
     preloadAudioAssets(this);
-    preloadGuideShots(this);
+    // Guide photos (~19 MB of GPU texture) load lazily in EncyclopediaScene.
   }
 
   create(): void {
     bakeCharacterAtlases(this);
     registerCharacterAnimations(this);
+    shrinkOversizedPropTextures(this);
     createGrainTextures(this);
     if (isAbilityLabFromUrl()) {
       this.registry.set(REGISTRY_KEYS.abilityLab, true);

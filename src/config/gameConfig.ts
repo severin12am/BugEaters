@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../utils/constants';
+import { PERF_PROFILE } from '../utils/perf';
 import { BootScene } from '../scenes/BootScene';
 import { OnboardingScene } from '../scenes/OnboardingScene';
 import { DevSessionScene } from '../scenes/DevSessionScene';
@@ -28,7 +29,9 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   roundPixels: true,
   render: {
     antialias: true,
-    antialiasGL: true,
+    // MSAA on the WebGL backbuffer multiplies fill cost on tile-based mobile
+    // GPUs; sprites already have smooth alpha edges, so low tier turns it off.
+    antialiasGL: PERF_PROFILE.antialiasGL,
     pixelArt: false,
     roundPixels: true,
     powerPreference: 'high-performance',

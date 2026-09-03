@@ -164,9 +164,16 @@ function pointerLabel(
   return g;
 }
 
-/** Preload all guide PNGs. Missing files fail softly (card skipped). */
+/** Preload guide PNGs not yet in the texture cache. Missing files fail softly (card skipped). */
 export function preloadGuideShots(scene: Phaser.Scene): void {
   for (const shot of GUIDE_SHOTS) {
-    scene.load.image(shot.key, shot.path);
+    if (!scene.textures.exists(shot.key)) {
+      scene.load.image(shot.key, shot.path);
+    }
   }
+}
+
+/** True when at least one guide photo still has to be fetched. */
+export function hasPendingGuideShots(scene: Phaser.Scene): boolean {
+  return GUIDE_SHOTS.some((shot) => !scene.textures.exists(shot.key));
 }

@@ -17,6 +17,7 @@
     "smoke:auth-race": "node scripts/auth-race-smoke.mjs",
     "smoke:auth-two-client": "node scripts/auth-two-client-smoke.mjs",
     "test:client-net": "tsx server/test/clientDistanceExtrapolator.test.ts",
+    "test:client-perf": "tsx server/test/clientPerf.test.ts",
     "capture:guide": "node scripts/capture-guide-shots.mjs",
     "deploy:pages": "npm run build && wrangler pages deploy dist --project-name bugeaters"
   },

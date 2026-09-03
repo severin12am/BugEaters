@@ -7,7 +7,7 @@
  *   VITE_TON_NETWORK              testnet | mainnet (default testnet)
  *   VITE_TELEGRAM_BOT_USERNAME    Bot username for the TON Connect return URL (t.me/<bot>)
  */
-import { CHAIN } from '@tonconnect/ui';
+import type { CHAIN } from '@tonconnect/ui';
 
 const manifestRaw = (import.meta.env.VITE_TONCONNECT_MANIFEST_URL as string | undefined)?.trim() ?? '';
 const networkRaw = (import.meta.env.VITE_TON_NETWORK as string | undefined)?.trim().toLowerCase() ?? '';
@@ -16,7 +16,13 @@ const botRaw = (import.meta.env.VITE_TELEGRAM_BOT_USERNAME as string | undefined
 export type TonNetworkName = 'testnet' | 'mainnet';
 
 export const TON_NETWORK: TonNetworkName = networkRaw === 'mainnet' ? 'mainnet' : 'testnet';
-export const TON_CHAIN: CHAIN = TON_NETWORK === 'mainnet' ? CHAIN.MAINNET : CHAIN.TESTNET;
+/**
+ * TON Connect `CHAIN` ids (`CHAIN.MAINNET` / `CHAIN.TESTNET`). Spelled out as
+ * literals so this module (imported by menu scenes at boot) does not pull the
+ * whole `@tonconnect/ui` bundle into the startup chunk — it now loads lazily on
+ * the first wallet action (see `tournament/chain/TonChainService.ts`).
+ */
+export const TON_CHAIN: CHAIN = (TON_NETWORK === 'mainnet' ? '-239' : '-3') as CHAIN;
 export const TONCONNECT_MANIFEST_URL = manifestRaw;
 export const TELEGRAM_BOT_USERNAME = botRaw;
 

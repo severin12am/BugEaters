@@ -3,6 +3,7 @@ import { getAbility, ROAD_SPAWNABLE_ABILITIES } from '../config/abilities';
 import { PROP_TEXTURE_KEYS } from '../config/propAssets';
 import { MainLaneObstacleTuning, TUNING } from '../config/tuning';
 import { GAME_HEIGHT, ux } from '../utils/constants';
+import { ImagePool } from '../utils/imagePool';
 import { subLaneCenterX } from './SubLaneManager';
 import { RoadScroll } from './RoadScroll';
 import { createRng, type Rng } from '../utils/rng';
@@ -68,17 +69,31 @@ export class ObstacleManager {
   private abilitySpawnMultiplier = 1;
   /** Playtest: when set, only these ability ids spawn as road pickups. */
   private abilitySpawnFilter: readonly string[] | null = null;
+  /** Recycled prop images — avoids create/destroy churn every spawn. */
+  private readonly pool: ImagePool;
 
   constructor(
-    private readonly scene: Phaser.Scene,
-    private readonly container: Phaser.GameObjects.Container,
+    scene: Phaser.Scene,
+    container: Phaser.GameObjects.Container,
     private readonly roadScroll: RoadScroll,
     seed: number,
   ) {
     this.subLaneWidth = ux(TUNING.lanes.subLaneSpacing);
     this.rng = createRng(seed);
+    this.pool = new ImagePool(scene, container);
     this.resetSchedule();
     this.unsubscribe = roadScroll.onScroll((deltaY) => this.scrollObstacles(deltaY));
+  }
+
+  /** Pooled image, already parented to the props container at the top of its draw order. */
+  private acquireSprite(x: number, y: number, textureKey: string): Phaser.GameObjects.Image {
+    const sprite = this.pool.acquire(x, y, textureKey);
+    sprite.setVisible(isOnScreenY(y));
+    return sprite;
+  }
+
+  private releaseSprite(sprite: Phaser.GameObjects.Image): void {
+    this.pool.release(sprite);
   }
 
   /** Solo-practice / debug: raise manhole share of obstacle spawns. */
@@ -128,7 +143,7 @@ export class ObstacleManager {
       if (obs.mainLane !== mainLane || obs.type === 'ability') {
         continue;
       }
-      obs.sprite.destroy();
+      this.releaseSprite(obs.sprite);
       this.obstacles.splice(i, 1);
     }
   }
@@ -175,8 +190,7 @@ export class ObstacleManager {
         : subLaneCenterX(globalSubLanes[0], this.subLaneWidth);
     const displayH = ux(TUNING.obstacles.trashDisplayHeight * heightScale);
 
-    const sprite = this.scene.add
-      .image(x, worldY, textureKey)
+    const sprite = this.acquireSprite(x, worldY, textureKey)
       .setOrigin(0.5, 1)
       .setDepth(depth);
     if (sprite.width > 0) {
@@ -191,7 +205,6 @@ export class ObstacleManager {
         sprite.setDisplaySize(minW, sprite.displayHeight);
       }
     }
-    this.container.add(sprite);
 
     this.obstacles.push({
       sprite,
@@ -247,7 +260,7 @@ export class ObstacleManager {
   }
 
   reset(): void {
-    this.obstacles.forEach((obs) => obs.sprite.destroy());
+    this.obstacles.forEach((obs) => this.releaseSprite(obs.sprite));
     this.obstacles.length = 0;
     this.resetSchedule();
   }
@@ -310,7 +323,7 @@ export class ObstacleManager {
     if (index === -1) {
       return;
     }
-    obs.sprite.destroy();
+    this.releaseSprite(obs.sprite);
     this.obstacles.splice(index, 1);
   }
 
@@ -381,13 +394,11 @@ export class ObstacleManager {
     const { x, globalSubLanes } = this.resolveSubLaneSpan(mainLane, 1);
     const displayH = ux(cfg.displayHeight);
 
-    const sprite = this.scene.add
-      .image(x, -aheadDistance, ability.textureKey)
+    const sprite = this.acquireSprite(x, -aheadDistance, ability.textureKey)
       .setOrigin(0.5, 1)
       .setDepth(DEPTH_ABILITY)
       .setAngle(rotation);
     sprite.setScale(displayH / sprite.height);
-    this.container.add(sprite);
 
     this.obstacles.push({
       sprite,
@@ -407,13 +418,11 @@ export class ObstacleManager {
     const { x, globalSubLanes } = this.resolveSubLaneSpan(mainLane, span);
     const displayH = ux(cfg.trashDisplayHeight * cfg.trashSizeMultiplier);
 
-    const sprite = this.scene.add
-      .image(x, -aheadDistance, PROP_TEXTURE_KEYS.trashBin)
+    const sprite = this.acquireSprite(x, -aheadDistance, PROP_TEXTURE_KEYS.trashBin)
       .setOrigin(0.5, 1)
       .setDepth(DEPTH_TRASH)
       .setAngle(rotation);
     sprite.setScale(displayH / sprite.height);
-    this.container.add(sprite);
 
     this.obstacles.push({
       sprite,
@@ -433,12 +442,10 @@ export class ObstacleManager {
     const { x, globalSubLanes } = this.resolveSubLaneSpan(mainLane, span);
     const displayH = ux(cfg.puddleDisplayHeightMin * sizeScale);
 
-    const sprite = this.scene.add
-      .image(x, -aheadDistance, PROP_TEXTURE_KEYS.puddle)
+    const sprite = this.acquireSprite(x, -aheadDistance, PROP_TEXTURE_KEYS.puddle)
       .setOrigin(0.5, 1)
       .setDepth(DEPTH_PUDDLE);
     sprite.setScale(displayH / sprite.height);
-    this.container.add(sprite);
 
     this.obstacles.push({
       sprite,
@@ -463,13 +470,11 @@ export class ObstacleManager {
     // Pivot on the hole (open) / lid center (closed) so rotation doesn't swing the kill zone.
     const origin = isOpen ? cfg.manholeOpening : cfg.manholeClosedOrigin;
     const rotation = this.rng.between(0, 359);
-    const sprite = this.scene.add
-      .image(x, -aheadDistance, key)
+    const sprite = this.acquireSprite(x, -aheadDistance, key)
       .setOrigin(origin.originXFraction, origin.originYFraction)
       .setDepth(DEPTH_MANHOLE)
       .setAngle(rotation)
       .setScale(scale);
-    this.container.add(sprite);
 
     const radius = sprite.displayWidth * cfg.manholeOpening.radiusFraction;
     this.obstacles.push({
@@ -486,24 +491,33 @@ export class ObstacleManager {
   }
 
   private scrollObstacles(deltaY: number): void {
-    this.obstacles.forEach((obs) => {
-      obs.prevY = obs.sprite.y;
-      if (!obs.pinned) {
-        obs.sprite.y += deltaY;
-      }
-    });
-
     for (let i = this.obstacles.length - 1; i >= 0; i--) {
       const obs = this.obstacles[i];
-      if (!obs.pinned && obs.sprite.y > GAME_HEIGHT + ux(80)) {
-        obs.sprite.destroy();
-        this.obstacles.splice(i, 1);
+      const sprite = obs.sprite;
+      obs.prevY = sprite.y;
+      if (!obs.pinned) {
+        sprite.y += deltaY;
+        if (sprite.y > GAME_HEIGHT + ux(80)) {
+          this.releaseSprite(sprite);
+          this.obstacles.splice(i, 1);
+          continue;
+        }
       }
+      // Props spawn up to ~900 logical px above the screen; don't pay their
+      // transform + batch cost until they are close to view. Collision uses
+      // sprite x/y, never visibility, so gameplay is unaffected.
+      sprite.setVisible(isOnScreenY(sprite.y));
     }
   }
 
   destroy(): void {
     this.unsubscribe();
     this.reset();
+    this.pool.destroy();
   }
+}
+
+/** Generous vertical window — origin is at the prop's feet, art extends upward. */
+function isOnScreenY(y: number): boolean {
+  return y > -ux(40) && y < GAME_HEIGHT + ux(200);
 }

@@ -1,18 +1,31 @@
 import Phaser from 'phaser';
 import { ABILITY_MAX_SLOTS } from '../config/abilities';
 import { TUNING } from '../config/tuning';
+import { PERF_PROFILE, screenPixelDprCap } from './perf';
 
 /**
  * Layout and coordinate scaling for mobile / Telegram Mini App.
  * Game coordinates are rendered at device pixel density for sharp visuals.
  */
 
-/** Device pixel ratio, capped to balance sharpness and performance. */
-export const DISPLAY_DPR = Math.min(window.devicePixelRatio || 1, 2);
-
 /** Reference phone layout before DPR scaling. */
 export const LOGICAL_WIDTH = 390;
 export const LOGICAL_HEIGHT = 844;
+
+/**
+ * Device pixel ratio, capped to balance sharpness and performance.
+ *
+ * Two caps apply: the perf tier (2 on capable phones, 1.5 on weak ones — 44%
+ * fewer pixels per frame) and the physical screen (never render more pixels
+ * than the phone can show; costs nothing visually). Everything on screen is
+ * laid out in logical px through `ux()`, so gameplay geometry is identical at
+ * any cap.
+ */
+export const DISPLAY_DPR = Math.min(
+  window.devicePixelRatio || 1,
+  PERF_PROFILE.dprCap,
+  screenPixelDprCap(LOGICAL_WIDTH, LOGICAL_HEIGHT),
+);
 
 /** Internal canvas size — higher on retina screens for crisp rendering. */
 export const GAME_WIDTH = Math.round(LOGICAL_WIDTH * DISPLAY_DPR);

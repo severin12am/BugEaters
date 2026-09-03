@@ -5,9 +5,17 @@
  */
 import { ensureSession } from '../../net/auth';
 import { getSupabase } from '../../net/supabaseClient';
-import { tonConnectService } from '../../ton/TonConnectService';
 import { invokeFunction } from '../tournamentApi';
 import type { BurnTransactionRequest, ChainService } from './ChainService';
+
+/**
+ * `@tonconnect/ui` is ~1 MB of script the race never needs. Load it on the
+ * first wallet action instead of at boot so weak phones start faster.
+ */
+async function tonConnect() {
+  const module = await import('../../ton/TonConnectService');
+  return module.tonConnectService;
+}
 
 export class TonChainService implements ChainService {
   readonly kind = 'ton' as const;
@@ -18,7 +26,7 @@ export class TonChainService implements ChainService {
       throw new Error('not_authenticated');
     }
     const challenge = await invokeFunction<{ payload: string }>('ton-proof-payload', {});
-    const wallet = await tonConnectService.connectWithProof(challenge.payload);
+    const wallet = await (await tonConnect()).connectWithProof(challenge.payload);
     const linked = await invokeFunction<{ address: string }>('link-wallet', {
       address: wallet.rawAddress,
       network: wallet.chain,
@@ -30,7 +38,7 @@ export class TonChainService implements ChainService {
   }
 
   async disconnectWallet(): Promise<void> {
-    await tonConnectService.disconnect();
+    await (await tonConnect()).disconnect();
     const supabase = getSupabase();
     if (!supabase) {
       return;
@@ -54,8 +62,8 @@ export class TonChainService implements ChainService {
     return (data?.wallet_address as string | null) ?? null;
   }
 
-  sendBurnTransaction(request: BurnTransactionRequest): Promise<{ boc: string }> {
-    return tonConnectService.sendTransaction({
+  async sendBurnTransaction(request: BurnTransactionRequest): Promise<{ boc: string }> {
+    return (await tonConnect()).sendTransaction({
       to: request.to,
       amount: request.amount,
       payload: request.payload,
