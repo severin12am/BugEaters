@@ -432,6 +432,9 @@ export class GameScene extends Phaser.Scene {
     this.player.onFootstep = () => {
       this.audioManager.playFootstep(this.player.characterType);
     };
+    npcManager?.bindFootsteps(this.player.characterType, (type) => {
+      this.audioManager.playFootstep(type, TUNING.audio.steps.npcScale);
+    });
 
     this.dilemmaManager = new PrisonersDilemmaManager(
       this,
@@ -912,6 +915,10 @@ export class GameScene extends Phaser.Scene {
 
   }
 
+  private isGodMode(): boolean {
+    return this.isLab && this.labGodMode;
+  }
+
   private createHud(): void {
     this.timerText = gameText(this, GAME_WIDTH / 2, getHudTopY(this), this.formatTime(RACE_DURATION_SEC), {
       fontFamily: 'Arial, Helvetica, sans-serif',
@@ -967,9 +974,8 @@ export class GameScene extends Phaser.Scene {
   private updateCameraFollow(): void {
     const camera = this.cameras.main;
     const zoom = this.laneManager.getViewportZoom();
-    const playerHalfWidth = ux(18);
-    const targetScrollX = this.laneManager.getCameraScrollX(this.player.x, playerHalfWidth);
     const viewWidth = GAME_WIDTH / zoom;
+    const targetScrollX = this.laneManager.getCameraScrollX(this.player.x, ux(18));
     const scrollGap = Math.abs(targetScrollX - camera.scrollX);
     const lerp =
       scrollGap > viewWidth * 0.08
@@ -982,10 +988,11 @@ export class GameScene extends Phaser.Scene {
       0,
     );
 
-    this.lightingManager?.syncToCamera(camera.scrollX, viewWidth);
+    const veilLeft = camera.scrollX;
+    this.lightingManager?.syncToCamera(veilLeft, viewWidth);
     if (this.roadBackdrop) {
       const width = viewWidth + ux(16);
-      this.roadBackdrop.setPosition(camera.scrollX + viewWidth / 2, GAME_HEIGHT / 2);
+      this.roadBackdrop.setPosition(veilLeft + viewWidth / 2, GAME_HEIGHT / 2);
       this.roadBackdrop.setSize(width, GAME_HEIGHT);
     }
   }
@@ -1162,6 +1169,7 @@ export class GameScene extends Phaser.Scene {
       this.dilemmaManager.tick(this.player, this.time.now);
       this.updateLighting();
       this.player.tickFootsteps();
+      this.npcManager?.tickFootsteps();
       this.audioManager.tick(delta);
       this.checkCollisions();
     }
@@ -1260,6 +1268,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.updateCameraFollow();
     this.player.tickFootsteps();
+    this.npcManager?.tickFootsteps();
     this.updateLighting();
     this.audioManager.tick(delta);
 
@@ -1419,7 +1428,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private checkOffRoadDeath(): void {
-    if (this.isLab && this.labGodMode) {
+    if (this.isGodMode()) {
       return;
     }
     if (this.abilityExecutor.isBarriersDisabled(this.time.now)) {
@@ -1451,7 +1460,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const immortal =
-      this.abilityExecutor.isEatProtected(nowMs) || (this.isLab && this.labGodMode);
+      this.abilityExecutor.isEatProtected(nowMs) || this.isGodMode();
     const outcome = this.npcManager.checkEating(this.player, immortal);
     if (outcome?.kind === 'player-died') {
       this.triggerDeath();
@@ -1618,7 +1627,7 @@ export class GameScene extends Phaser.Scene {
           grounded &&
           obs.manholeState === 'open' &&
           !shareholder &&
-          !(this.isLab && this.labGodMode) &&
+          !this.isGodMode() &&
           manholeContact(
             obs,
             this.player.x,
@@ -1922,7 +1931,7 @@ export class GameScene extends Phaser.Scene {
     if (this.playerDied) {
       return;
     }
-    if (this.isLab && this.labGodMode) {
+    if (this.isGodMode()) {
       return;
     }
     this.playerDied = true;

@@ -107,6 +107,8 @@ export class RoadsideLampManager {
       .setDepth(DEPTH_LAMP_POST)
       .setVisible(spawnY > -ux(4));
     sprite.setScale(displayH / sprite.height);
+    const inward = sprite.displayWidth * cfg.inwardShiftFraction;
+    sprite.x = side === 'left' ? this.leftX + inward : this.rightX - inward;
     this.container.add(sprite);
     this.lamps.push({ sprite });
     return true;

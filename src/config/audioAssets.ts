@@ -31,6 +31,9 @@ export const AUDIO_KEYS = {
   phraseBestBehaviour: 'audio-phrase-bestbehaviour',
   phraseValhalla: 'audio-phrase-valhalla',
   phraseDrive: 'audio-phrase-drive',
+  phraseCee: 'audio-phrase-cee',
+  phraseCee2: 'audio-phrase-cee2',
+  phraseCee3: 'audio-phrase-cee3',
 } as const;
 
 /** Random ambient voice lines from Unity PhraseManager. */
@@ -60,6 +63,9 @@ export const PHRASE_AUDIO_KEYS: readonly string[] = [
   AUDIO_KEYS.phraseBestBehaviour,
   AUDIO_KEYS.phraseValhalla,
   AUDIO_KEYS.phraseDrive,
+  AUDIO_KEYS.phraseCee,
+  AUDIO_KEYS.phraseCee2,
+  AUDIO_KEYS.phraseCee3,
 ];
 
 export const STEP_AUDIO_KEY: Record<CharacterType, string> = {
@@ -101,4 +107,7 @@ export const AUDIO_PATHS: Record<string, string> = {
   [AUDIO_KEYS.phraseBestBehaviour]: `${AUDIO_BASE}/bestbehaviour.wav`,
   [AUDIO_KEYS.phraseValhalla]: `${AUDIO_BASE}/valhalla.wav`,
   [AUDIO_KEYS.phraseDrive]: `${AUDIO_BASE}/drive.wav`,
+  [AUDIO_KEYS.phraseCee]: `${AUDIO_BASE}/cee.wav`,
+  [AUDIO_KEYS.phraseCee2]: `${AUDIO_BASE}/cee2.wav`,
+  [AUDIO_KEYS.phraseCee3]: `${AUDIO_BASE}/cee3.wav`,
 };

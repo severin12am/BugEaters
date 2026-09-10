@@ -55,7 +55,7 @@ export class RunnerCharacter extends Phaser.GameObjects.Container {
   private slowStreakActive = false;
   private idBadge: Phaser.GameObjects.Text | null = null;
   private isDead = false;
-  private lastFootstepFrame = -1;
+  private lastSeenAnimFrame = -1;
   private obstacleJumpActive = false;
   private statusTint: number | null = null;
   private flightPlane: Phaser.GameObjects.Image | null = null;
@@ -158,16 +158,28 @@ export class RunnerCharacter extends Phaser.GameObjects.Container {
       return;
     }
 
-    const midFrame = Math.floor(anim.frames.length / 2);
-    if (frame.index !== 0 && frame.index !== midFrame) {
+    const idx = frame.index;
+    const prev = this.lastSeenAnimFrame;
+    if (idx === prev) {
       return;
     }
-    if (this.lastFootstepFrame === frame.index) {
-      return;
-    }
+    this.lastSeenAnimFrame = idx;
 
-    this.lastFootstepFrame = frame.index;
-    this.onFootstep();
+    const midFrame = Math.floor(anim.frames.length / 2);
+    const passed = (target: number): boolean => {
+      if (prev < 0) {
+        return idx === target;
+      }
+      if (idx > prev) {
+        return target > prev && target <= idx;
+      }
+      // Wrapped to the start of the cycle.
+      return target > prev || target <= idx;
+    };
+
+    if (passed(0) || passed(midFrame)) {
+      this.onFootstep();
+    }
   }
 
   /** Freeze run anim during a puddle slide boost (speed streaks set separately). */

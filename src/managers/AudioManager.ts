@@ -15,9 +15,11 @@ type SoundVoice = Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound;
 
 export class AudioManager {
   private phraseTimerMs = 0;
+  private lastPhraseKey: string | null = null;
   private lampSound: SoundVoice | null = null;
   private readonly stepVoices = new Map<string, SoundVoice[]>();
   private stepVoiceCursor = 0;
+  private stepVolume: number = TUNING.audio.steps.volume;
   private active = false;
   private muted = false;
 
@@ -28,7 +30,7 @@ export class AudioManager {
   /** Starts phrase scheduling and prepares the lamp loop. */
   startRace(): void {
     this.active = true;
-    this.phraseTimerMs = TUNING.audio.phrases.firstDelaySec * 1000;
+    this.phraseTimerMs = this.nextPhraseDelayMs(TUNING.audio.phrases.firstDelaySec);
     this.ensureLampLoop();
   }
 
@@ -58,13 +60,14 @@ export class AudioManager {
   }
 
   /**
-   * Footstep one-shot synced to the walk animation (Unity Mover.Sound at volume 0.1).
+   * Footstep one-shots synced to the walk animation.
    *
-   * The Bug walk cycle fires ~19 steps/s. `sound.play(key)` would allocate a new
-   * sound object (and audio graph) for every one, so steps rotate through a
-   * small fixed set of voices per character instead.
+   * The Bug walk cycle is 96 fps, so trigger frames can be skipped in a 60 fps
+   * game loop — `RunnerCharacter.tickFootsteps` accounts for that. Voices rotate
+   * through a small pool because a new `sound.play(key)` per step would allocate
+   * an audio graph 19 times a second.
    */
-  playFootstep(character: CharacterType): void {
+  playFootstep(character: CharacterType, volumeScale = 1): void {
     if (!this.canPlaySfx()) {
       return;
     }
@@ -89,7 +92,7 @@ export class AudioManager {
       }
     }
     voice.play({
-      volume: TUNING.audio.steps.volume,
+      volume: this.stepVolume * volumeScale,
       detune: Phaser.Math.Between(-120, 120),
     });
   }
@@ -133,7 +136,12 @@ export class AudioManager {
     }
 
     this.playRandomPhrase();
-    this.phraseTimerMs = TUNING.audio.phrases.intervalSec * 1000;
+    this.phraseTimerMs = this.nextPhraseDelayMs();
+  }
+
+  private nextPhraseDelayMs(minSec = TUNING.audio.phrases.intervalMinSec): number {
+    const maxSec = Math.max(minSec, TUNING.audio.phrases.intervalMaxSec);
+    return Phaser.Math.FloatBetween(minSec, maxSec) * 1000;
   }
 
   private playRandomPhrase(): void {
@@ -142,7 +150,9 @@ export class AudioManager {
       return;
     }
 
-    const key = Phaser.Utils.Array.GetRandom(loaded);
+    const pool = loaded.filter((key) => key !== this.lastPhraseKey);
+    const key = Phaser.Utils.Array.GetRandom(pool.length > 0 ? pool : loaded);
+    this.lastPhraseKey = key;
     this.scene.sound.play(key, { volume: TUNING.audio.phrases.volume });
   }
 

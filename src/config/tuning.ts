@@ -192,6 +192,12 @@ export const TUNING = {
     displayHeight: 29,
     /** Push lamp posts further onto the shoulder, away from the road edge. */
     shoulderOutset: 28,
+    /**
+     * Slide each lamp toward the road (left lamps right, right lamps left)
+     * by this fraction of the sprite's on-screen width. Light pools use the
+     * same sprite x, so they move with the lamp.
+     */
+    inwardShiftFraction: 0.2,
   },
 
   /** Dashed boundary between playable road and outer void. */
@@ -258,12 +264,15 @@ export const TUNING = {
   /** Audio — matches Unity PhraseManager, Mover.Sound, and Lamp AudioSource. */
   audio: {
     phrases: {
-      firstDelaySec: 2,
-      intervalSec: 15,
+      firstDelaySec: 5,
+      intervalMinSec: 5,
+      intervalMaxSec: 10,
       volume: 0.5,
     },
     steps: {
       volume: 0.1,
+      /** Other species' NPC steps, relative to the player step gain. */
+      npcScale: 0.75,
     },
     lamp: {
       volume: 0.3,

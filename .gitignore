@@ -14,4 +14,5 @@ server/node_modules
 *.key
 .tools/
 scripts/.playtest-artifacts/
+reels/
 contracts/build/

@@ -185,7 +185,12 @@ export class NpcManager {
   }
 
   private findNpcBySlot(globalSubLane: number): NpcEntry | undefined {
-    return this.npcs.find((npc) => npc.globalSubLane === globalSubLane);
+    return this.npcs.find(
+      (npc) =>
+        npc.globalSubLane === globalSubLane &&
+        !npc.excluded &&
+        !npc.runner.getIsDead(),
+    );
   }
 
   /**
@@ -217,6 +222,31 @@ export class NpcManager {
         y: n.runner.y,
         globalSubLane: n.globalSubLane,
       }));
+  }
+
+  /**
+   * Other-species NPCs play their own step clips. Same-species bots stay quiet
+   * so extra Bugs don't turn the mix into a 19 Hz buzz.
+   */
+  bindFootsteps(
+    playerType: CharacterType,
+    play: (type: CharacterType) => void,
+  ): void {
+    for (const npc of this.npcs) {
+      if (npc.type === playerType) {
+        continue;
+      }
+      npc.runner.onFootstep = () => play(npc.type);
+    }
+  }
+
+  tickFootsteps(): void {
+    for (const npc of this.npcs) {
+      if (npc.excluded || !npc.runner.visible || npc.runner.getIsDead()) {
+        continue;
+      }
+      npc.runner.tickFootsteps();
+    }
   }
 
   /**
